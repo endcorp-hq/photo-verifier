@@ -118,13 +118,7 @@ cd packages/photoverifier-sdk && pnpm build
 cd photo-verifier && pnpm dev
 ```
 
-## License
-
-- **Core SDK**: MIT License (free, open source)
-- **Blockchain Layer**: Proprietary (requires license)
-
 See [docs/LICENSING.md](./docs/LICENSING.md) for details.
-
 ## Contributing
 
 Issues and PRs welcome. Please open an issue to discuss significant changes before submitting PRs.
