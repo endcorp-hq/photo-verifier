@@ -1,15 +1,8 @@
-import { SettingsUiCluster } from '@/components/settings/settings-ui-cluster'
-import { AppText } from '@/components/app-text'
-import { SettingsAppConfig } from '@/components/settings/settings-app-config'
-import { SettingsUiAccount } from '@/components/settings/settings-ui-account'
-
-import { AppPage } from '@/components/app-page'
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { useRef, useState } from 'react';
 import { Button, StyleSheet, Text, TouchableOpacity, View, Linking, Image, ScrollView } from 'react-native';
-import { utf8ToBytes } from '@noble/hashes/utils'
 import Snackbar from 'react-native-snackbar'
 import { useWalletUi } from '@/components/solana/use-wallet-ui'
 import { Buffer } from 'buffer'
@@ -19,6 +12,7 @@ import { AppConfig } from '@/constants/app-config'
 import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeekerWithHelius, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@citizen-science-sdk/photoverifier-sdk'
 import { requestPresignedPut } from '@/utils/s3'
 import * as Location from 'expo-location'
+
 
 
 export default function TabCameraScreen() {
@@ -38,7 +32,7 @@ export default function TabCameraScreen() {
   const [seekerLoading, setSeekerLoading] = useState<boolean>(false);
   const [seekerMintValue, setSeekerMintValue] = useState<string | null>(null);
   const cameraRef = useRef<any>(null);
-  const { account, signMessage, signAndSendTransaction } = useWalletUi()
+  const { account, signAndSendTransaction } = useWalletUi()
   const connection = useConnection()
   const { selectedCluster } = useCluster()
 
@@ -226,19 +220,8 @@ export default function TabCameraScreen() {
         Snackbar.show({ text: 'Missing preview or hash', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
         return
       }
-      const owner = account?.publicKey?.toString()
       const ts = timestamp ?? new Date().toISOString()
       const seekerMint = seekerMintValue
-
-      // Snapshot current values to allow background proof creation even if we reset UI
-      const snapshot = {
-        hashHex: preHashHex,
-        localUri: previewUri,
-        ts,
-        location: locationValue,
-        owner,
-        seekerMint,
-      }
 
       let remoteUri: string | null = null
       try {
