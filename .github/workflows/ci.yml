@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build packages
+        run: |
+          pnpm --filter @citizen-science-sdk/core build
+          pnpm --filter @citizen-science-sdk/blockchain build
+          pnpm --filter @citizen-science-sdk/photoverifier-sdk build
+      
+      - name: Run type checks
+        run: |
+          pnpm --filter @citizen-science-sdk/core exec tsc --noEmit
+          pnpm --filter @citizen-science-sdk/blockchain exec tsc --noEmit
+          pnpm --filter @citizen-science-sdk/photoverifier-sdk exec tsc --noEmit
+      
+      - name: Build mobile app
+        run: |
+          cd photo-verifier
+          pnpm install
+          pnpm build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run linter
+        run: pnpm lint
+
+  anchor-test:
+    name: Anchor Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL 'https://release.solana.com/v1.18.1/install')"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      
+      - name: Install Anchor
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install latest
+          avm use latest
+      
+      - name: Build on-chain program
+        run: |
+          cd on-chain/photo-verifier
+          anchor build
+      
+      - name: Run tests
+        run: |
+          cd on-chain/photo-verifier
+          anchor test
