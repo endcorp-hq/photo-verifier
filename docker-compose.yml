@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # LocalStack for S3 emulation
+  localstack:
+    image: localstack/localstack:latest
+    container_name: citizen-science-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - DEFAULT_REGION=us-east-1
+      - LAMBDA_EXECUTOR=local
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Presign API server
+  presign-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.presign
+    container_name: citizen-science-presign
+    ports:
+      - "3000:3000"
+    environment:
+      - S3_HOST=http://localstack:4566
+      - BUCKET=photoverifier-dev
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  # Solana test validator (optional - for faster local testing)
+  solana-test:
+    image: ghcr.io/solana-labs/solana:v1.18.1
+    container_name: citizen-science-solana
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+    command: >
+      solana-test-validator
+      --reset
+      --mintable
+      --bpf-program J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt target/deploy/photo_verifier.so
+    volumes:
+      - ./on-chain/photo-verifier/target/deploy:/app/deploy
+      - solana_data:/root/.solana
+    depends_on:
+      - localstack
+
+volumes:
+  localstack_data:
+  solana_data:
+
+networks:
+  default:
+    name: citizen-science-network
