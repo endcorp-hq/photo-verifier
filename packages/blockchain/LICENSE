@@ -1,0 +1,53 @@
+PROPRIETARY LICENSE - CITIZEN SCIENCE SDK BLOCKCHAIN
+
+Copyright (c) 2024 Citizen Science SDK
+
+All rights reserved.
+
+NOTICE: This software, including but not limited to the blockchain components,
+Solana program integration, compressed accounts functionality, and associated
+documentation, is proprietary and confidential. It may only be used in
+accordance with the terms of your valid license agreement with Citizen Science SDK.
+
+TERMS AND CONDITIONS:
+
+1. LICENSE GRANT
+   Subject to the terms and conditions of this Agreement, Citizen Science SDK
+   grants you a non-exclusive, non-transferable license to use the software
+   solely for your internal business purposes, in accordance with your
+   licensed tier (Startup or Enterprise).
+
+2. RESTRICTIONS
+   You may NOT:
+   - Modify, decompile, disassemble, or reverse engineer the software
+   - Sublicense, rent, lease, or lend the software to third parties
+   - Use the software beyond the scope of your licensed tier
+   - Remove, alter, or obscure any proprietary notices
+   - Use the software to provide services to third parties (SaaS)
+   - Create derivative works based on the software
+
+3. OWNERSHIP
+   The software and all intellectual property rights therein are and shall
+   remain the exclusive property of Citizen Science SDK. No ownership rights
+   are transferred to you under this Agreement.
+
+4. SUPPORT AND MAINTENANCE
+   Support and maintenance services are provided only to Enterprise tier
+   customers in accordance with the terms of their subscription.
+
+5. TERMINATION
+   This Agreement shall automatically terminate upon:
+   - Expiration of your license term
+   - Failure to pay license fees when due
+   - Breach of any term of this Agreement
+
+6. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+
+7. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL CITIZEN SCIENCE SDK BE LIABLE FOR ANY INDIRECT,
+   INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES.
+
+For license inquiries, contact: licensing@citizen-science-sdk.com
+
+This is a proprietary license. Use without a valid license is prohibited.
