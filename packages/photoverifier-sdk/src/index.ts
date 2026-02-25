@@ -7,7 +7,7 @@
  * 
  * Usage:
  * 
- * import { PhotoVerifier } from '@citizen-science-sdk/photoverifier-sdk';
+ * import { PhotoVerifier } from '@photoverifier/sdk';
  * 
  * // Initialize with license (for blockchain features)
  * const verifier = new PhotoVerifier({
@@ -51,7 +51,7 @@ export {
   type CaptureResult,
   type S3Config,
   type S3KeyParams,
-} from '@citizen-science-sdk/core';
+} from '@photoverifier/core';
 
 // Blockchain - requires license
 export {
@@ -82,7 +82,7 @@ export {
   UsageTracker,
   type LicenseInfo,
   type LicenseValidationResult,
-} from '@citizen-science-sdk/blockchain';
+} from '@photoverifier/blockchain';
 
 // Unified SDK class
 export { PhotoVerifier } from './sdk';

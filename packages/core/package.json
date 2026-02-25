@@ -1,5 +1,5 @@
 {
-  "name": "@citizen-science-sdk/core",
+  "name": "@photoverifier/core",
   "version": "0.1.0",
   "description": "Core functionality for photo verification - hashing, camera, location, storage (free, open-source)",
   "main": "dist/index.js",

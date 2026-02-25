@@ -1,5 +1,5 @@
 {
-  "name": "@citizen-science-sdk/blockchain",
+  "name": "@photoverifier/blockchain",
   "version": "0.1.0",
   "description": "Blockchain layer for Citizen Science SDK - compressed accounts, Solana operations (licensed)",
   "main": "dist/index.js",
