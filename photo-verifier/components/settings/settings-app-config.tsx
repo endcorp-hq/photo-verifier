@@ -2,13 +2,8 @@ import { AppConfig } from '@/constants/app-config'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
 import { AppExternalLink, AppExternalLinkProps } from '@/components/app-external-link'
-import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol-web3js'
-import Snackbar from 'react-native-snackbar'
-import { Button } from '@react-navigation/elements'
-import { useCluster } from '@/components/cluster/cluster-provider'
 
 export function SettingsAppConfig() {
-  const { selectedCluster } = useCluster()
   return (
     <AppView>
       <AppText type="subtitle">App Config</AppText>
