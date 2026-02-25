@@ -1,0 +1,6 @@
+[target.bpfel-unknown-unknown]
+llvm-target = "bpfel-unknown-unknown"
+cpu-features = []
+
+[target.llvm86_64-pc-windows-msvc]
+linker = "lld"
