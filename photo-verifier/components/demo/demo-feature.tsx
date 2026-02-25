@@ -27,7 +27,7 @@ export function DemoFeature() {
   return (
     <AppView>
       <AppText type="subtitle">Demo page</AppText>
-      <AppText>Assert BLAKE3("hello") equals expected hex.</AppText>
+      <AppText>Assert BLAKE3(&quot;hello&quot;) equals expected hex.</AppText>
       <BaseButton label="Run BLAKE3 assert" onPress={onPress} />
       {error ? <AppText style={{ color: '#B00020' }}>Error: {error}</AppText> : null}
       {result ? <AppText>{result}</AppText> : null}
