@@ -6,7 +6,7 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import type { CameraView } from 'expo-camera';
-import type { GeoLocation, CaptureResult, S3Config } from '@citizen-science-sdk/core';
+import type { GeoLocation, CaptureResult, S3Config } from '@photoverifier/core';
 import {
   blake3Hash,
   captureAndPersist,
@@ -15,7 +15,7 @@ import {
   buildS3KeyForPhoto,
   buildS3Uri,
   putToPresignedUrl,
-} from '@citizen-science-sdk/core';
+} from '@photoverifier/core';
 import {
   decodeLicenseKey,
   hasFeature,
@@ -26,7 +26,7 @@ import {
   type LicenseInfo,
   type LicenseValidationResult,
   type VerificationResult,
-} from '@citizen-science-sdk/blockchain';
+} from '@photoverifier/blockchain';
 
 export interface PhotoVerifierConfig {
   licenseKey?: string;

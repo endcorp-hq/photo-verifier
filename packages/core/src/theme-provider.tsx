@@ -20,7 +20,7 @@ interface ThemeProviderProps {
  * 
  * @example
  * ```tsx
- * import { ThemeProvider, lightTheme } from '@citizen-science-sdk/core';
+ * import { ThemeProvider, lightTheme } from '@photoverifier/core';
  * 
  * function App() {
  *   return (
@@ -44,7 +44,7 @@ export function ThemeProvider({ theme, children }: ThemeProviderProps) {
  * 
  * @example
  * ```tsx
- * import { useTheme } from '@citizen-science-sdk/core';
+ * import { useTheme } from '@photoverifier/core';
  * 
  * function MyComponent() {
  *   const theme = useTheme();

@@ -9,7 +9,7 @@ import { Buffer } from 'buffer'
 import { useConnection } from '@/components/solana/solana-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
-import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeekerWithHelius, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@citizen-science-sdk/photoverifier-sdk'
+import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeekerWithHelius, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@photoverifier/sdk'
 import { requestPresignedPut } from '@/utils/s3'
 import * as Location from 'expo-location'
 

@@ -1,13 +1,13 @@
-# Citizen Science SDK - API Reference
+# PhotoVerifier SDK - API Reference
 
 ## Overview
 
-The Citizen Science SDK provides photo verification capabilities with blockchain anchoring. It's designed to be integrated into mobile applications for capturing verifiable photos with cryptographic proof of authenticity.
+The PhotoVerifier SDK provides photo verification capabilities with blockchain anchoring. It's designed to be integrated into mobile applications for capturing verifiable photos with cryptographic proof of authenticity.
 
 ## Package Structure
 
 ```
-@citizen-science-sdk/
+@photoverifier/
 ├── core/                    # Free, open-source (MIT)
 │   ├── hash.ts              # Blake3 hashing
 │   ├── camera.ts            # Camera capture
@@ -29,7 +29,7 @@ The Citizen Science SDK provides photo verification capabilities with blockchain
 
 ```bash
 # Install the unified SDK
-npm install @citizen-science-sdk/photoverifier-sdk
+npm install @photoverifier/sdk
 
 # Peer dependencies (if not already installed)
 npm install @solana/web3.js @solana/spl-token expo expo-camera expo-location expo-file-system expo-media-library
@@ -38,7 +38,7 @@ npm install @solana/web3.js @solana/spl-token expo expo-camera expo-location exp
 ## Quick Start
 
 ```typescript
-import { PhotoVerifier, darkTheme, ThemeProvider } from '@citizen-science-sdk/photoverifier-sdk';
+import { PhotoVerifier, darkTheme, ThemeProvider } from '@photoverifier/sdk';
 import { Connection } from '@solana/web3.js';
 
 // 1. Initialize with license (for blockchain features)
@@ -65,7 +65,7 @@ These functions are available without a license:
 ### Hashing
 
 ```typescript
-import { blake3HexFromBase64, blake3Hash } from '@citizen-science-sdk/core';
+import { blake3HexFromBase64, blake3Hash } from '@photoverifier/core';
 
 // Hash from Base64 string
 const hash = blake3HexFromBase64(base64ImageData); // "abc123..."
@@ -77,7 +77,7 @@ const { hash32, hashHex } = blake3Hash(imageBytes);
 ### Camera
 
 ```typescript
-import { captureAndPersist, readFileAsBytes } from '@citizen-science-sdk/core';
+import { captureAndPersist, readFileAsBytes } from '@photoverifier/core';
 
 // Capture photo
 const { tempUri, assetUri } = await captureAndPersist(cameraRef);
@@ -89,7 +89,7 @@ const bytes = await readFileAsBytes(assetUri);
 ### Location
 
 ```typescript
-import { getCurrentLocation, locationToString } from '@citizen-science-sdk/core';
+import { getCurrentLocation, locationToString } from '@photoverifier/core';
 
 // Get current location
 const location = await getCurrentLocation();
@@ -102,7 +102,7 @@ const locString = locationToString(location); // "37.7749,-122.4194"
 ### Storage
 
 ```typescript
-import { buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl } from '@citizen-science-sdk/core';
+import { buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl } from '@photoverifier/core';
 
 // Build S3 key
 const key = buildS3KeyForPhoto({
@@ -121,7 +121,7 @@ await putToPresignedUrl({
 ### Theming
 
 ```typescript
-import { ThemeProvider, darkTheme, createCustomTheme, useTheme } from '@citizen-science-sdk/core';
+import { ThemeProvider, darkTheme, createCustomTheme, useTheme } from '@photoverifier/core';
 
 // Use built-in dark theme
 <ThemeProvider theme={darkTheme}>
@@ -154,7 +154,7 @@ These features require a valid license:
 ### PhotoVerifier Class
 
 ```typescript
-import { PhotoVerifier } from '@citizen-science-sdk/photoverifier-sdk';
+import { PhotoVerifier } from '@photoverifier/sdk';
 
 const verifier = new PhotoVerifier({
   licenseKey: string,           // Required for blockchain features
@@ -221,7 +221,7 @@ import {
   createDemoLicenseKey, 
   UsageTracker,
   LICENSE_TIERS 
-} from '@citizen-science-sdk/blockchain';
+} from '@photoverifier/blockchain';
 
 // Validate license
 const result = decodeLicenseKey(licenseKey, secret);

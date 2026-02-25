@@ -85,7 +85,7 @@ SOFTWARE.
 
 ### Blockchain Layer: Proprietary License
 
-The blockchain component (`@citizen-science-sdk/blockchain`) is proprietary and requires a valid license key.
+The blockchain component (`@photoverifier/blockchain`) is proprietary and requires a valid license key.
 
 ```
 PROPRIETARY LICENSE AGREEMENT
@@ -102,7 +102,7 @@ RESTRICTIONS:
 - You may not use the software beyond the scope of your license tier
 - You must maintain the confidentiality of the software
 
-For license inquiries, contact: licensing@citizen-science-sdk.com
+For license inquiries, contact: licensing@photoverifier.com
 ```
 
 ## Comparison with Industry
@@ -217,10 +217,12 @@ The SDK will stop accepting new verifications. You can either:
 - It's a wrapper around the open Bubblegum protocol
 - You can verify proofs on-chain without our program
 - The SDK interfaces are open
-
 ## Contact
 
-- **Licensing**: licensing@citizen-science-sdk.com
-- **Sales**: sales@citizen-science-sdk.com
-- **Support**: support@citizen-science-sdk.com
-- **Website**: https://citizen-science-sdk.com
+- **Website**: https://photoverifier.com
+- **Sales**: sales@photoverifier.com
+- **Support**: support@photoverifier.com
+- **Website**: https://photoverifier.com
+- **Sales**: sales@photoverifier.com
+- **Support**: support@photoverifier.com
+- **Website**: https://photoverifier.com
