@@ -41,4 +41,9 @@ yarn-error.*
 
 app-example
 
-.env
+# Rust / Anchor
+target/
+Cargo.lock
+.anchor/
+*.so
+*.wasm

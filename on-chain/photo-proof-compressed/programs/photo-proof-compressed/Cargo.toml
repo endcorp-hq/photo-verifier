@@ -1,0 +1,23 @@
+[package]
+name = "photo-proof-compressed"
+version = "0.1.0"
+description = "Compressed accounts program for photo proof verification"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "photo_proof_compressed"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.31.1"
+# Uncomment for actual compression integration:
+# spl-account-compression = "0.2.0"
+# mpl-bubblegum = "3.1.2"
