@@ -161,5 +161,3 @@ export async function verifySeeker(params: {
   }
 }
 
-// Backward compatibility alias
-export const verifySeekerWithHelius = verifySeeker;

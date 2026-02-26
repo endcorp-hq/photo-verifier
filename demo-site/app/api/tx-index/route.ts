@@ -9,7 +9,7 @@ import idl from '../../../lib/idl/photo_verifier.json';
 // Env: RPC_URL (optional), PROGRAM_ID (optional), LIMIT (optional)
 export async function GET() {
   try {
-    const rpcUrl = process.env.RPC_URL || 'https://devnet.helius-rpc.com/?api-key=c7c71360-ee3b-437a-bc8d-0c2931d673df';
+    const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
     const programIdStr = process.env.PROGRAM_ID || (idl as any).metadata.address || 'J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt';
     const limit = Number(process.env.LIMIT || 100);
 
