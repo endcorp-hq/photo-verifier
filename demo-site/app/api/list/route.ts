@@ -14,7 +14,7 @@ const REGION = process.env.S3_REGION || 'us-east-1';
 const PREFIX = normalizePrefix(process.env.S3_PREFIX || 'photos/');
 const CDN = process.env.S3_CDN_DOMAIN || null;
 const TX_INDEX_URL = process.env.TX_INDEX_URL || null;
-const RPC_URL = process.env.RPC_URL || 'https://devnet.helius-rpc.com/?api-key=c7c71360-ee3b-437a-bc8d-0c2931d673df';
+const RPC_URL = process.env.RPC_URL || 'https://api.devnet.solana.com';
 const TX_CACHE_TTL_MS = Number(process.env.TX_CACHE_TTL_MS || 5000);
 
 let __txEntriesCache: { ts: number; out: Array<{ hashHex: string; s3Uri: string; location: string; payer: string; signature: string; url: string; timestamp?: string }> } | null = null;
