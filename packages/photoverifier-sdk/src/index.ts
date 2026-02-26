@@ -51,7 +51,7 @@ export {
   type CaptureResult,
   type S3Config,
   type S3KeyParams,
-} from '@photoverifier/core';
+} from '../../core/src';
 
 // Blockchain - requires license
 export {
@@ -82,7 +82,7 @@ export {
   UsageTracker,
   type LicenseInfo,
   type LicenseValidationResult,
-} from '@photoverifier/blockchain';
+} from '../../blockchain/src';
 
 // Unified SDK class
 export { PhotoVerifier } from './sdk';
@@ -107,7 +107,6 @@ export {
   uploadAndSubmit,
   hashBytes,
   PHOTO_VERIFIER_PROGRAM_ID,
-  type PhotoData,
+
 } from './modules/onchain';
-export { PhotoVerifier } from './sdk';
-export type { PhotoVerifierConfig, PhotoVerifierOptions } from './sdk';
+

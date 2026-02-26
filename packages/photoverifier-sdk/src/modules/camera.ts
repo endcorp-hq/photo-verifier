@@ -19,7 +19,7 @@ export async function captureAndPersist(cameraRef: React.RefObject<CameraView>):
 }
 
 export async function readFileAsBase64(uri: string): Promise<string> {
-  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any });
 }
 
 

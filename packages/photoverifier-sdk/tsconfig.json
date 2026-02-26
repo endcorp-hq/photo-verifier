@@ -2,7 +2,6 @@
   "extends": "../../photo-verifier/tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "declaration": true,
     "emitDeclarationOnly": false,
     "noEmit": false,
@@ -10,5 +9,3 @@
   },
   "include": ["src/**/*"]
 }
-
-

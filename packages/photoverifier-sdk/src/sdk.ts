@@ -6,7 +6,7 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import type { CameraView } from 'expo-camera';
-import type { GeoLocation, CaptureResult, S3Config } from '@photoverifier/core';
+import type { GeoLocation, CaptureResult, S3Config } from '../../core/src';
 import {
   blake3Hash,
   captureAndPersist,
@@ -15,7 +15,7 @@ import {
   buildS3KeyForPhoto,
   buildS3Uri,
   putToPresignedUrl,
-} from '@photoverifier/core';
+} from '../../core/src';
 import {
   decodeLicenseKey,
   hasFeature,
@@ -26,7 +26,7 @@ import {
   type LicenseInfo,
   type LicenseValidationResult,
   type VerificationResult,
-} from '@photoverifier/blockchain';
+} from '../../blockchain/src';
 
 export interface PhotoVerifierConfig {
   licenseKey?: string;
@@ -215,11 +215,7 @@ export class PhotoVerifier {
 
     const returnedKey = result.key ?? key;
     data.s3Uri = buildS3Uri(this.s3Bucket, returnedKey);
-    return data.s3Uri;
-      key,
-      contentType: 'image/jpeg',
-      bytes: data.hashBytes, // Note: Should upload actual image bytes, not just hash
-    });
+
 
     data.s3Uri = buildS3Uri(this.s3Bucket, result.key);
     return data.s3Uri;
