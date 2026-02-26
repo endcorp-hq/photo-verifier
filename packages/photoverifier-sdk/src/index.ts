@@ -91,7 +91,7 @@ export type { PhotoVerifierConfig, PhotoVerifierOptions } from './sdk';
 // Seeker/SGT verification - from modules/seeker
 export {
   isSeekerDevice,
-  verifySeekerWithHelius,
+  verifySeeker,
   detectSeekerUser,
   findSeekerMintForOwner,
   type SeekerDetectionResult,
