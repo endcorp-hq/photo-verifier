@@ -27,11 +27,11 @@ export class AppConfig {
       ((Constants as any)?.expoConfig?.extra?.s3?.defaultContentType ?? (Constants as any)?.manifest?.extra?.s3?.defaultContentType) ||
       'image/jpeg',
   }
-  static helius = {
-    apiKey:
-      process.env.EXPO_PUBLIC_HELIUS_API_KEY ||
-      ((Constants as any)?.expoConfig?.extra?.helius?.apiKey ?? (Constants as any)?.manifest?.extra?.helius?.apiKey) ||
-      '',
+  static rpc = {
+    url:
+      process.env.EXPO_PUBLIC_SOLANA_RPC_URL ||
+      ((Constants as any)?.expoConfig?.extra?.rpc?.url ?? (Constants as any)?.manifest?.extra?.rpc?.url) ||
+      'https://api.mainnet-beta.solana.com',
   }
   private static parseCsv(value: any): string[] {
     if (!value) return []

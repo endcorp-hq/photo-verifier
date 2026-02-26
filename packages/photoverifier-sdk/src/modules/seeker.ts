@@ -2,6 +2,9 @@ import type { Connection, PublicKey } from '@solana/web3.js';
 import { Platform } from 'react-native';
 import { Connection as Web3Connection, PublicKey as Web3PublicKey } from '@solana/web3.js';
 
+// Default RPC URL - can be overridden via verifySeeker() param or environment
+const DEFAULT_RPC_URL = 'https://api.mainnet-beta.solana.com';
+
 export async function findSeekerMintForOwner(
   connection: Connection,
   owner: PublicKey,
@@ -51,19 +54,29 @@ export function isSeekerDevice(): boolean {
   }
 }
 
-// Client-side verification of Seeker Genesis Token using Helius getTokenAccountsByOwnerV2
-export async function verifySeekerWithHelius(params: {
+// Constants for Seeker Genesis Token verification
+const SGT_MINT_AUTHORITY = 'GT2zuHVaZQYZSyQMgJPLzvkmyztfyXg2NJunqFp4p3A4';
+const SGT_METADATA_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
+const SGT_GROUP_MINT_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
+
+/**
+ * Verify if a wallet holds a Seeker Genesis Token (SGT)
+ * 
+ * This verifies the wallet owns a genuine Seeker phone by checking for the 
+ * official Seeker Genesis Token with correct mint authority, metadata, and group.
+ * 
+ * @param params.walletAddress - The wallet address to verify
+ * @param params.rpcUrl - RPC URL (defaults to SOLANA_RPC_URL env or mainnet-beta)
+ * @returns { isVerified: boolean, mint: string | null }
+ */
+export async function verifySeeker(params: {
   walletAddress: string;
-  heliusApiKey: string;
+  rpcUrl?: string;
 }): Promise<{ isVerified: boolean; mint: string | null }> {
-  const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${params.heliusApiKey}`;
-  // Constants from docs
-  const SGT_MINT_AUTHORITY = 'GT2zuHVaZQYZSyQMgJPLzvkmyztfyXg2NJunqFp4p3A4';
-  const SGT_METADATA_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
-  const SGT_GROUP_MINT_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
+  const rpcUrl = params.rpcUrl ?? DEFAULT_RPC_URL;
 
   try {
-    const connection = new Web3Connection(HELIUS_RPC_URL);
+    const connection = new Web3Connection(rpcUrl);
 
     let allTokenAccounts: any[] = [];
     let paginationKey: any = null;
@@ -81,7 +94,7 @@ export async function verifySeekerWithHelius(params: {
         ],
       } as const;
 
-      const resp = await fetch(HELIUS_RPC_URL, {
+      const resp = await fetch(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestPayload),
@@ -148,4 +161,5 @@ export async function verifySeekerWithHelius(params: {
   }
 }
 
-
+// Backward compatibility alias
+export const verifySeekerWithHelius = verifySeeker;

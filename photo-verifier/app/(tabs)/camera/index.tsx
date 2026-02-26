@@ -9,7 +9,7 @@ import { Buffer } from 'buffer'
 import { useConnection } from '@/components/solana/solana-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
-import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeekerWithHelius, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@photoverifier/sdk'
+import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeeker, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@photoverifier/sdk'
 import { requestPresignedPut } from '@/utils/s3'
 import * as Location from 'expo-location'
 
@@ -137,15 +137,13 @@ export default function TabCameraScreen() {
       const seekerPromise = (async () => {
         try {
           const ownerStr = account?.publicKey?.toString()
-          if (!ownerStr || !AppConfig.helius.apiKey) {
-            if (!AppConfig.helius.apiKey) {
-              Snackbar.show({ text: 'Missing Helius API key; cannot verify Seeker SGT', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
-            }
+          if (!ownerStr) {
             return null
           }
-          const res = await verifySeekerWithHelius({ walletAddress: ownerStr, heliusApiKey: AppConfig.helius.apiKey })
+          const res = await verifySeeker({ walletAddress: ownerStr, rpcUrl: AppConfig.rpc.url })
           return res.isVerified ? res.mint : null
         } catch { return null }
+
       })()
 
       // (We will await these promises after computing the post-save hash)
