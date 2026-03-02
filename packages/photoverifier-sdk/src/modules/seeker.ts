@@ -77,48 +77,63 @@ export async function verifySeeker(params: {
 
   try {
     const connection = new Web3Connection(rpcUrl);
+    const spl = await import('@solana/spl-token');
+    const { unpackMint, getMetadataPointerState, getTokenGroupMemberState, TOKEN_2022_PROGRAM_ID } = spl as any;
 
-    let allTokenAccounts: any[] = [];
-    let paginationKey: any = null;
-    let pageCount = 0;
-    do {
-      pageCount++;
-      const requestPayload = {
-        jsonrpc: '2.0',
-        id: `page-${pageCount}`,
-        method: 'getTokenAccountsByOwnerV2',
-        params: [
-          params.walletAddress,
-          { programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' },
-          { encoding: 'jsonParsed', limit: 1000, ...(paginationKey ? { paginationKey } : {}) },
-        ],
-      } as const;
+    const mintStrings: string[] = [];
+    const seenMints = new Set<string>();
+    const collectMint = (acc: any) => {
+      const mint = acc?.account?.data?.parsed?.info?.mint;
+      const amount = acc?.account?.data?.parsed?.info?.tokenAmount?.amount;
+      if (!mint || amount === '0') return;
+      if (seenMints.has(mint)) return;
+      seenMints.add(mint);
+      mintStrings.push(mint);
+    };
 
-      const resp = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      if ((data as any).error) throw new Error(`RPC: ${(data as any).error?.message}`);
-      const value = (data as any)?.result?.value?.accounts ?? [];
-      if (value.length) allTokenAccounts.push(...value);
-      paginationKey = (data as any)?.result?.paginationKey ?? null;
-    } while (paginationKey);
+    // Preferred path for providers that support it (e.g. Helius).
+    try {
+      let paginationKey: any = null;
+      let pageCount = 0;
+      do {
+        pageCount++;
+        const requestPayload = {
+          jsonrpc: '2.0',
+          id: `page-${pageCount}`,
+          method: 'getTokenAccountsByOwnerV2',
+          params: [
+            params.walletAddress,
+            { programId: TOKEN_2022_PROGRAM_ID.toBase58() },
+            { encoding: 'jsonParsed', limit: 1000, ...(paginationKey ? { paginationKey } : {}) },
+          ],
+        } as const;
 
-    if (!allTokenAccounts.length) return { isVerified: false, mint: null };
+        const resp = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if ((data as any).error) throw new Error(`RPC: ${(data as any).error?.message}`);
+        const value = (data as any)?.result?.value?.accounts ?? [];
+        for (const account of value) collectMint(account);
+        paginationKey = (data as any)?.result?.paginationKey ?? null;
+      } while (paginationKey);
+    } catch {
+      // Fall through to standard Solana RPC method.
+    }
 
-    const mintPubkeys = allTokenAccounts
-      .map((acc) => {
-        try {
-          const mintStr = acc?.account?.data?.parsed?.info?.mint;
-          return mintStr ? new Web3PublicKey(mintStr) : null;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean) as Web3PublicKey[];
+    // Fallback path for standard RPC nodes.
+    if (!mintStrings.length) {
+      const owner = new Web3PublicKey(params.walletAddress);
+      const parsed = await connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID });
+      for (const account of parsed.value) collectMint(account);
+    }
+
+    if (!mintStrings.length) return { isVerified: false, mint: null };
+
+    const mintPubkeys = mintStrings.map((mint) => new Web3PublicKey(mint));
 
     const BATCH_SIZE = 100;
     const mintAccountInfos: (import('@solana/web3.js').AccountInfo<Buffer> | null)[] = [];
@@ -127,9 +142,6 @@ export async function verifySeeker(params: {
       const infos = await connection.getMultipleAccountsInfo(batch);
       mintAccountInfos.push(...infos);
     }
-
-    const spl = await import('@solana/spl-token');
-    const { unpackMint, getMetadataPointerState, getTokenGroupMemberState, TOKEN_2022_PROGRAM_ID } = spl as any;
 
     for (let i = 0; i < mintAccountInfos.length; i++) {
       const mintInfo = mintAccountInfos[i];
@@ -160,4 +172,3 @@ export async function verifySeeker(params: {
     return { isVerified: false, mint: null };
   }
 }
-
