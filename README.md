@@ -73,6 +73,11 @@ const { signature } = await verifier.storeProof(data);
 
 ## Documentation
 
+- [Documentation Index](./docs/README.md) — Architecture, config, runbooks, troubleshooting
+- [Architecture and Data Flow](./docs/ARCHITECTURE.md) — Component map and wire diagrams
+- [Configuration Reference](./docs/CONFIGURATION.md) — Env vars and deploy parameters
+- [Devnet Runbook](./docs/DEVNET_RUNBOOK.md) — Deploy and smoke test commands
+- [Troubleshooting](./docs/TROUBLESHOOTING.md) — Common failure signatures and fixes
 - [API Reference](./docs/API.md) — Full SDK API documentation
 - [Licensing](./docs/LICENSING.md) — License tiers, pricing, and terms
 
