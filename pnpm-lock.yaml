@@ -101,6 +101,42 @@ importers:
         specifier: '>=0.74'
         version: 0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)
 
+  packages/photoverifier-seeker-sdk:
+    dependencies:
+      '@photoverifier/sdk':
+        specifier: workspace:*
+        version: link:../photoverifier-sdk
+      '@solana/spl-token':
+        specifier: '*'
+        version: 0.4.14(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.8.3)(utf-8-validate@5.0.10))(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.3)(utf-8-validate@5.0.10)
+      '@solana/web3.js':
+        specifier: '*'
+        version: 1.98.4(bufferutil@4.1.0)(typescript@5.8.3)(utf-8-validate@5.0.10)
+      expo:
+        specifier: '>=51'
+        version: 53.0.27(@babel/core@7.29.0)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)))(bufferutil@4.1.0)(react-native-webview@13.13.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)(utf-8-validate@5.0.10)
+      expo-camera:
+        specifier: '*'
+        version: 16.1.11(expo@53.0.27(@babel/core@7.29.0)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)))(bufferutil@4.1.0)(react-native-webview@13.13.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)(utf-8-validate@5.0.10))(react-native-web@0.20.0(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)
+      expo-file-system:
+        specifier: ~18.1.11
+        version: 18.1.11(expo@53.0.27(@babel/core@7.29.0)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)))(bufferutil@4.1.0)(react-native-webview@13.13.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)(utf-8-validate@5.0.10))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))
+      expo-location:
+        specifier: '*'
+        version: 18.1.6(expo@53.0.27(@babel/core@7.29.0)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)))(bufferutil@4.1.0)(react-native-webview@13.13.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)(utf-8-validate@5.0.10))
+      expo-media-library:
+        specifier: '*'
+        version: 17.1.7(expo@53.0.27(@babel/core@7.29.0)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)))(bufferutil@4.1.0)(react-native-webview@13.13.5(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))(react@19.0.0)(utf-8-validate@5.0.10))(react-native@0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10))
+      js-base64:
+        specifier: ^3.7.8
+        version: 3.7.8
+      react:
+        specifier: '>=18'
+        version: 19.0.0
+      react-native:
+        specifier: '>=0.74'
+        version: 0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)
+
   photo-verifier:
     dependencies:
       '@expo/vector-icons':
