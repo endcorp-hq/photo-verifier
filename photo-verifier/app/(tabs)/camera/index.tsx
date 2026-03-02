@@ -9,7 +9,7 @@ import { useConnection } from '@/components/solana/solana-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
 import { blake3HexFromBytes, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, verifySeeker, buildRecordPhotoProofTransaction } from '@photoverifier/sdk'
-import { requestPresignedPut } from '@/utils/s3'
+import { requestPresignedPut, PresignError } from '@/utils/s3'
 import { canonicalizeIntegrityPayload } from '@/utils/integrity'
 import { Base64 } from 'js-base64'
 import * as Location from 'expo-location'
@@ -283,6 +283,8 @@ export default function TabCameraScreen() {
         return
       }
       const locationString = `${location.latitude},${location.longitude}`
+      const latitudeE6 = Math.round(location.latitude * 1_000_000)
+      const longitudeE6 = Math.round(location.longitude * 1_000_000)
 
       const { slot, blockhash, timestampSec } = await ensureBlockAnchor()
 
@@ -295,10 +297,13 @@ export default function TabCameraScreen() {
           basePrefix: AppConfig.s3.basePrefix,
         })
 
-        const nonce = `${Date.now()}${Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, '0')}`
+        const nonceBigInt = (BigInt(Date.now()) << 20n) | BigInt(Math.floor(Math.random() * 0x100000))
+        const nonce = nonceBigInt.toString()
         const integrityPayload = {
           hashHex: photoHashHex,
           location: locationString,
+          latitudeE6,
+          longitudeE6,
           timestampSec,
           wallet: account.publicKey.toBase58(),
           nonce,
@@ -309,15 +314,38 @@ export default function TabCameraScreen() {
         const sigBytes = await signMessage(new TextEncoder().encode(canonicalPayload))
         const signatureB64 = Base64.fromUint8Array(sigBytes)
 
-        const { uploadURL, key: returnedKey } = await requestPresignedPut(AppConfig.s3.presignEndpoint, {
-          key,
-          contentType: AppConfig.s3.defaultContentType,
-          integrity: {
-            version: 'v1',
-            payload: integrityPayload,
-            signature: signatureB64,
-          },
-        })
+        let uploadURL = ''
+        let returnedKey = key
+        let attestationSignatureBytes: Uint8Array | null = null
+        try {
+          const presign = await requestPresignedPut(AppConfig.s3.presignEndpoint, {
+            key,
+            contentType: AppConfig.s3.defaultContentType,
+            integrity: {
+              version: 'v1',
+              payload: integrityPayload,
+              signature: signatureB64,
+            },
+          })
+          uploadURL = presign.uploadURL
+          returnedKey = presign.key || key
+          attestationSignatureBytes = presign.attestationSignature64
+        } catch (err: any) {
+          const code = err instanceof PresignError ? err.code : ''
+          const friendly =
+            code === 'PRESIGN_MISSING_ATTESTATION_SIGNATURE'
+              ? 'Server update required: presign API must return attestation signature'
+              : code === 'PRESIGN_INVALID_ATTESTATION_SIGNATURE'
+                ? 'Presign API returned malformed attestation signature'
+                : `Could not authorize upload: ${err?.message ?? 'unknown error'}`
+          Snackbar.show({
+            text: friendly,
+            duration: Snackbar.LENGTH_SHORT,
+            backgroundColor: 'rgba(176,0,32,0.95)',
+            textColor: 'white',
+          })
+          return
+        }
 
         let uploadBytes = photoBytesRef.current
         if (!uploadBytes) {
@@ -342,9 +370,9 @@ export default function TabCameraScreen() {
           }
 
           const hashBytes = Uint8Array.from(Buffer.from(photoHashHex, 'hex'))
-          const latitudeE6 = Math.round(location.latitude * 1_000_000)
-          const longitudeE6 = Math.round(location.longitude * 1_000_000)
-          const nonceBigInt = BigInt(nonce)
+          if (!attestationSignatureBytes || attestationSignatureBytes.length !== 64) {
+            throw new Error('Missing valid attestation signature from presign API')
+          }
 
           const { transaction } = await buildRecordPhotoProofTransaction({
             connection,
@@ -354,6 +382,7 @@ export default function TabCameraScreen() {
             timestampSec: Math.floor(timestampSec),
             latitudeE6,
             longitudeE6,
+            attestationSignature64: attestationSignatureBytes,
           })
 
           const {
@@ -371,8 +400,8 @@ export default function TabCameraScreen() {
           Snackbar.show({ text: `On-chain submit failed: ${friendly}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
         }
       } catch (e: any) {
-        console.log('S3 upload error', e)
-        Snackbar.show({ text: `S3 upload failed: ${e?.message ?? 'unknown error'}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+        console.log('Upload error', e)
+        Snackbar.show({ text: `Upload failed: ${e?.message ?? 'unknown error'}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
       }
 
     } catch (e: any) {
