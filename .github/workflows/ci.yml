@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
-    branches: [main]
+    branches: [develop, main]
 
 jobs:
   test:
@@ -28,15 +28,17 @@ jobs:
       
       - name: Build packages
         run: |
-          pnpm --filter @citizen-science-sdk/core build
-          pnpm --filter @citizen-science-sdk/blockchain build
-          pnpm --filter @citizen-science-sdk/photoverifier-sdk build
-      
+          pnpm --filter @photoverifier/core build
+          pnpm --filter @photoverifier/blockchain build
+          pnpm --filter @photoverifier/sdk build
+          pnpm --filter @photoverifier/seeker-sdk build
+
       - name: Run type checks
         run: |
-          pnpm --filter @citizen-science-sdk/core exec tsc --noEmit
-          pnpm --filter @citizen-science-sdk/blockchain exec tsc --noEmit
-          pnpm --filter @citizen-science-sdk/photoverifier-sdk exec tsc --noEmit
+          pnpm --filter @photoverifier/core exec tsc --noEmit
+          pnpm --filter @photoverifier/blockchain exec tsc --noEmit
+          pnpm --filter @photoverifier/sdk exec tsc --noEmit
+          pnpm --filter @photoverifier/seeker-sdk smoke:types
       
       - name: Build mobile app
         run: |
@@ -90,10 +92,10 @@ jobs:
       
       - name: Build on-chain program
         run: |
-          cd on-chain/photo-verifier
+          cd on-chain/photo-proof-compressed
           anchor build
-      
+
       - name: Run tests
         run: |
-          cd on-chain/photo-verifier
-          anchor test
+          cd on-chain/photo-proof-compressed
+          anchor test --skip-build
