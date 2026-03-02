@@ -10,7 +10,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::System;
 
-declare_id!("J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt");
+declare_id!("8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz");
 
 /// Photo proof metadata stored on-chain
 /// Note: In a full compression impl, only the root hash would be stored here
@@ -20,6 +20,7 @@ declare_id!("J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt");
 pub struct PhotoMetadata {
     pub owner: Pubkey,
     pub hash: [u8; 32],        // Blake3 hash of photo (32 bytes)
+    pub nonce: u64,            // Client-signed nonce used for replay resistance
     pub timestamp: i64,        // Unix timestamp (8 bytes)
     pub latitude: i64,         // Fixed-point, 6 decimal places (8 bytes)
     pub longitude: i64,        // Fixed-point, 6 decimal places (8 bytes)
@@ -31,7 +32,7 @@ pub struct PhotoMetadata {
 }
 
 impl PhotoMetadata {
-    pub const MAX_SIZE: usize = 32 + 32 + 8 + 8 + 8 + 32 + 4 + 1 + 8;
+    pub const MAX_SIZE: usize = 32 + 32 + 8 + 8 + 8 + 8 + 32 + 4 + 1 + 8;
 }
 
 /// Configuration for a proof tree
@@ -83,18 +84,19 @@ pub struct InitializeTree<'info> {
 
 /// Record a new photo proof
 #[derive(Accounts)]
+#[instruction(args: RecordPhotoProofArgs)]
 pub struct RecordPhotoProof<'info> {
     #[account(
         init,
         payer = owner,
         space = 8 + PhotoMetadata::MAX_SIZE,
-        seeds = [b"photo", owner.key().as_ref(), &hash],
+        seeds = [b"photo", owner.key().as_ref(), &args.hash],
         bump
     )]
     pub photo_metadata: Account<'info, PhotoMetadata>,
     #[account(
         mut,
-        seeds = [b"tree_config", tree_config.authority.key().as_ref()],
+        seeds = [b"tree_config", owner.key().as_ref()],
         bump = tree_config.bump
     )]
     pub tree_config: Account<'info, TreeConfig>,
@@ -106,6 +108,7 @@ pub struct RecordPhotoProof<'info> {
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RecordPhotoProofArgs {
     pub hash: [u8; 32],
+    pub nonce: u64,
     pub timestamp: i64,
     pub latitude: i64,
     pub longitude: i64,
@@ -117,7 +120,7 @@ pub struct RecordPhotoProofArgs {
 #[derive(Accounts)]
 pub struct VerifyPhotoProof<'info> {
     #[account(
-        seeds = [b"photo", photo_metadata.owner.key().as_ref(), &photo_metadata.hash],
+        seeds = [b"photo", photo_metadata.owner.as_ref(), &photo_metadata.hash],
         bump = photo_metadata.bump
     )]
     pub photo_metadata: Account<'info, PhotoMetadata>,
@@ -183,6 +186,7 @@ pub mod photo_proof_compressed {
         let metadata = &mut ctx.accounts.photo_metadata;
         metadata.owner = ctx.accounts.owner.key();
         metadata.hash = args.hash;
+        metadata.nonce = args.nonce;
         metadata.timestamp = args.timestamp;
         metadata.latitude = args.latitude;
         metadata.longitude = args.longitude;
@@ -204,6 +208,6 @@ pub mod photo_proof_compressed {
 
     /// Verify a photo proof by hash
     pub fn verify_photo_proof(ctx: Context<VerifyPhotoProof>) -> Result<PhotoMetadata> {
-        Ok(ctx.accounts.photo_metadata.clone())
+        Ok(ctx.accounts.photo_metadata.clone().into_inner())
     }
 }
