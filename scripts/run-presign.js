@@ -19,6 +19,9 @@ const S3_HOST = process.env.S3_HOST || 'http://localhost:4566';
 const BUCKET = process.env.BUCKET || 'photoverifier-dev';
 const PORT = process.env.PORT || 3000;
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || process.env.PHOTOVERIFIER_RPC_URL || 'https://api.devnet.solana.com';
+const ATTESTATION_PRIVATE_KEY_B58 = process.env.ATTESTATION_PRIVATE_KEY_B58 || '';
+const ATTESTATION_PUBLIC_KEY = process.env.ATTESTATION_PUBLIC_KEY || 'Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk';
+const U64_MAX = (1n << 64n) - 1n;
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION || 'us-east-1',
@@ -37,6 +40,8 @@ function canonicalizeIntegrityPayload(payload) {
   return JSON.stringify({
     hashHex: payload.hashHex,
     location: payload.location,
+    latitudeE6: payload.latitudeE6,
+    longitudeE6: payload.longitudeE6,
     timestampSec: payload.timestampSec,
     wallet: payload.wallet,
     nonce: payload.nonce,
@@ -60,6 +65,23 @@ function parseAndValidateLocation(locationString) {
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     throw new Error('Integrity location out of range');
   }
+}
+
+function parseIntField(name, value) {
+  const asNumber = Number(value);
+  if (!Number.isInteger(asNumber)) throw new Error(`Invalid ${name}`);
+  return asNumber;
+}
+
+function parseNonceU64(value) {
+  let nonce;
+  try {
+    nonce = BigInt(String(value));
+  } catch {
+    throw new Error('Invalid nonce');
+  }
+  if (nonce < 0n || nonce > U64_MAX) throw new Error('Nonce out of range for u64');
+  return nonce;
 }
 
 async function rpcRequest(method, params = []) {
@@ -126,6 +148,62 @@ function verifyDetachedSignature(messageBytes, signatureBase64, walletBase58) {
   const ok = crypto.verify(null, Buffer.from(messageBytes), { key: spkiDer, format: 'der', type: 'spki' }, signature);
   if (!ok) throw new Error('Integrity signature verification failed');
 }
+
+function loadAttestationSigner() {
+  if (!ATTESTATION_PRIVATE_KEY_B58) {
+    throw new Error('ATTESTATION_PRIVATE_KEY_B58 is required');
+  }
+  const raw = Buffer.from(bs58.decode(ATTESTATION_PRIVATE_KEY_B58));
+  const seed = raw.length === 64 ? raw.subarray(0, 32) : raw;
+  if (seed.length !== 32) {
+    throw new Error('ATTESTATION_PRIVATE_KEY_B58 must decode to 32-byte seed or 64-byte secret key');
+  }
+  const pkcs8Prefix = Buffer.from('302e020100300506032b657004220420', 'hex');
+  const privateKeyDer = Buffer.concat([pkcs8Prefix, seed]);
+  const privateKey = crypto.createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' });
+  const publicKeyDer = crypto.createPublicKey(privateKey).export({ format: 'der', type: 'spki' });
+  const derivedPublicKey = Buffer.from(publicKeyDer).subarray(-32);
+  const configuredPublicKey = Buffer.from(bs58.decode(ATTESTATION_PUBLIC_KEY));
+  if (!derivedPublicKey.equals(configuredPublicKey)) {
+    throw new Error('ATTESTATION_PUBLIC_KEY does not match ATTESTATION_PRIVATE_KEY_B58');
+  }
+  return privateKey;
+}
+
+function buildAttestationMessage(payload) {
+  const wallet = Buffer.from(bs58.decode(String(payload.wallet)));
+  if (wallet.length !== 32) throw new Error('Invalid wallet in integrity payload');
+  const hashHex = String(payload.hashHex || '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hashHex)) throw new Error('Invalid hashHex in integrity payload');
+  const hash = Buffer.from(hashHex, 'hex');
+
+  const nonce = parseNonceU64(payload.nonce);
+  const timestampSec = parseIntField('timestampSec', payload.timestampSec);
+  const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
+  const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
+
+  if (latitudeE6 < -90_000_000 || latitudeE6 > 90_000_000) throw new Error('latitudeE6 out of range');
+  if (longitudeE6 < -180_000_000 || longitudeE6 > 180_000_000) throw new Error('longitudeE6 out of range');
+
+  const out = Buffer.alloc(26 + 32 + 32 + 8 + 8 + 8 + 8);
+  let o = 0;
+  Buffer.from('photo-proof-attestation-v1', 'utf8').copy(out, o);
+  o += 26;
+  wallet.copy(out, o);
+  o += 32;
+  hash.copy(out, o);
+  o += 32;
+  out.writeBigUInt64LE(nonce, o);
+  o += 8;
+  out.writeBigInt64LE(BigInt(timestampSec), o);
+  o += 8;
+  out.writeBigInt64LE(BigInt(latitudeE6), o);
+  o += 8;
+  out.writeBigInt64LE(BigInt(longitudeE6), o);
+  return out;
+}
+
+const attestationSigner = loadAttestationSigner();
 
 const server = http.createServer(async (req, res) => {
   // CORS headers
@@ -201,6 +279,14 @@ const server = http.createServer(async (req, res) => {
         }
 
         parseAndValidateLocation(payload.location);
+        const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
+        const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
+        if (Math.round(Number(payload.location.split(',')[0]) * 1_000_000) !== latitudeE6) {
+          throw new Error('latitudeE6 does not match location');
+        }
+        if (Math.round(Number(payload.location.split(',')[1]) * 1_000_000) !== longitudeE6) {
+          throw new Error('longitudeE6 does not match location');
+        }
         await validateChainAnchor(payload);
         if (!payload.wallet || !payload.nonce) throw new Error('Missing wallet/nonce in integrity payload');
         ensureFreshNonce(String(payload.nonce));
@@ -209,6 +295,10 @@ const server = http.createServer(async (req, res) => {
           String(signature),
           String(payload.wallet)
         );
+        const attestationMessage = buildAttestationMessage(payload);
+        const attestationSignature = crypto
+          .sign(null, attestationMessage, attestationSigner)
+          .toString('base64');
 
         const command = new PutObjectCommand({
           Bucket,
@@ -225,6 +315,8 @@ const server = http.createServer(async (req, res) => {
           bucket: BUCKET,
           expiresIn: 300,
           integrityAccepted: true,
+          attestationSignature,
+          attestationPublicKey: ATTESTATION_PUBLIC_KEY,
         }));
         
         console.log(`Generated presigned URL for: ${key}`);

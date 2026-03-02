@@ -13,6 +13,18 @@ Parameters:
     Type: Number
     Default: 300
     Description: Presigned URL expiration in seconds
+  BucketRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region where the target S3 bucket exists
+  AttestationPrivateKeyBase58:
+    Type: String
+    NoEcho: true
+    Description: Base58-encoded 32-byte Ed25519 seed (or 64-byte Solana secret key) used to sign on-chain attestations
+  AttestationPublicKey:
+    Type: String
+    Default: Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk
+    Description: Base58 Ed25519 public key corresponding to AttestationPrivateKeyBase58
 
 Resources:
   PresignFunctionRole:
@@ -41,26 +53,31 @@ Resources:
   PresignFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Runtime: nodejs20.x
+      Runtime: nodejs18.x
       Handler: index.handler
       Role: !GetAtt PresignFunctionRole.Arn
       Timeout: 10
       Environment:
         Variables:
           BUCKET_NAME: !Ref BucketName
+          BUCKET_REGION: !Ref BucketRegion
           URL_EXPIRY_SECONDS: !Ref UrlExpirySeconds
           ALLOWED_ORIGIN: !Ref AllowedOrigin
           SOLANA_RPC_URL: https://api.devnet.solana.com
+          ATTESTATION_PRIVATE_KEY_B58: !Ref AttestationPrivateKeyBase58
+          ATTESTATION_PUBLIC_KEY: !Ref AttestationPublicKey
       Code:
         ZipFile: |
-          const AWS = require('aws-sdk');
           const crypto = require('crypto');
-          const s3 = new AWS.S3();
 
           const BUCKET = process.env.BUCKET_NAME;
           const EXPIRES = Number(process.env.URL_EXPIRY_SECONDS || 300);
           const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+          const BUCKET_REGION = process.env.BUCKET_REGION || 'us-east-1';
           const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+          const ATTESTATION_PRIVATE_KEY_B58 = process.env.ATTESTATION_PRIVATE_KEY_B58 || '';
+          const ATTESTATION_PUBLIC_KEY = process.env.ATTESTATION_PUBLIC_KEY || 'Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk';
+          const U64_MAX = (1n << 64n) - 1n;
           const NONCE_TTL_MS = 10 * 60 * 1000;
           const nonceCache = new Map();
           const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -109,6 +126,8 @@ Resources:
             return JSON.stringify({
               hashHex: payload.hashHex,
               location: payload.location,
+              latitudeE6: payload.latitudeE6,
+              longitudeE6: payload.longitudeE6,
               timestampSec: payload.timestampSec,
               wallet: payload.wallet,
               nonce: payload.nonce,
@@ -128,6 +147,106 @@ Resources:
             const lon = Number(lonRaw);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Invalid integrity location');
             if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('Integrity location out of range');
+          }
+
+          function parseIntField(name, value) {
+            const asNumber = Number(value);
+            if (!Number.isInteger(asNumber)) throw new Error(`Invalid ${name}`);
+            return asNumber;
+          }
+
+          function parseNonceU64(value) {
+            let nonce;
+            try {
+              nonce = BigInt(String(value));
+            } catch {
+              throw new Error('Invalid nonce');
+            }
+            if (nonce < 0n || nonce > U64_MAX) throw new Error('Nonce out of range for u64');
+            return nonce;
+          }
+
+          function sha256Hex(data) {
+            return crypto.createHash('sha256').update(data).digest('hex');
+          }
+
+          function hmac(key, data) {
+            return crypto.createHmac('sha256', key).update(data).digest();
+          }
+
+          function encodeRfc3986(value) {
+            return encodeURIComponent(value).replace(/[!'()*]/g, ch =>
+              '%' + ch.charCodeAt(0).toString(16).toUpperCase()
+            );
+          }
+
+          function formatAmzDate(date) {
+            const iso = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+            return iso.slice(0, 15) + 'Z';
+          }
+
+          function getSignatureKey(secretAccessKey, dateStamp, region, service) {
+            const kDate = hmac(Buffer.from('AWS4' + secretAccessKey, 'utf8'), dateStamp);
+            const kRegion = hmac(kDate, region);
+            const kService = hmac(kRegion, service);
+            return hmac(kService, 'aws4_request');
+          }
+
+          function buildPresignedPutUrl(key, expiresSeconds) {
+            const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+            const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+            const sessionToken = process.env.AWS_SESSION_TOKEN;
+            if (!accessKeyId || !secretAccessKey) {
+              throw new Error('Missing AWS credentials in Lambda environment');
+            }
+
+            const now = new Date();
+            const amzDate = formatAmzDate(now);
+            const dateStamp = amzDate.slice(0, 8);
+            const service = 's3';
+            const region = BUCKET_REGION;
+            const host = region === 'us-east-1' ? 's3.amazonaws.com' : `s3.${region}.amazonaws.com`;
+            const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+            const canonicalUri =
+              `/${encodeRfc3986(BUCKET)}/` + String(key).split('/').map(encodeRfc3986).join('/');
+            const queryParams = {
+              'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+              'X-Amz-Credential': `${accessKeyId}/${credentialScope}`,
+              'X-Amz-Date': amzDate,
+              'X-Amz-Expires': String(expiresSeconds),
+              'X-Amz-SignedHeaders': 'host',
+            };
+            if (sessionToken) {
+              queryParams['X-Amz-Security-Token'] = sessionToken;
+            }
+
+            const canonicalQuery = Object.keys(queryParams)
+              .sort()
+              .map(k => `${encodeRfc3986(k)}=${encodeRfc3986(queryParams[k])}`)
+              .join('&');
+            const canonicalHeaders = `host:${host}\n`;
+            const payloadHash = 'UNSIGNED-PAYLOAD';
+            const canonicalRequest = [
+              'PUT',
+              canonicalUri,
+              canonicalQuery,
+              canonicalHeaders,
+              'host',
+              payloadHash,
+            ].join('\n');
+            const stringToSign = [
+              'AWS4-HMAC-SHA256',
+              amzDate,
+              credentialScope,
+              sha256Hex(canonicalRequest),
+            ].join('\n');
+            const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, service);
+            const signature = crypto
+              .createHmac('sha256', signingKey)
+              .update(stringToSign)
+              .digest('hex');
+
+            return `https://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
           }
 
           async function rpcRequest(method, params) {
@@ -192,6 +311,60 @@ Resources:
             if (!ok) throw new Error('Integrity signature verification failed');
           }
 
+          function loadAttestationSigner() {
+            if (!ATTESTATION_PRIVATE_KEY_B58) {
+              throw new Error('ATTESTATION_PRIVATE_KEY_B58 is required');
+            }
+            const raw = decodeBase58(ATTESTATION_PRIVATE_KEY_B58);
+            const seed = raw.length === 64 ? raw.subarray(0, 32) : raw;
+            if (seed.length !== 32) {
+              throw new Error('ATTESTATION_PRIVATE_KEY_B58 must decode to 32-byte seed or 64-byte secret key');
+            }
+            const pkcs8Prefix = Buffer.from('302e020100300506032b657004220420', 'hex');
+            const privateKeyDer = Buffer.concat([pkcs8Prefix, seed]);
+            const privateKey = crypto.createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' });
+            const publicKeyDer = crypto.createPublicKey(privateKey).export({ format: 'der', type: 'spki' });
+            const derivedPublicKey = Buffer.from(publicKeyDer).subarray(-32);
+            const configuredPublicKey = decodeBase58(ATTESTATION_PUBLIC_KEY);
+            if (!derivedPublicKey.equals(configuredPublicKey)) {
+              throw new Error('ATTESTATION_PUBLIC_KEY does not match ATTESTATION_PRIVATE_KEY_B58');
+            }
+            return privateKey;
+          }
+
+          function buildAttestationMessage(payload) {
+            const wallet = decodeBase58(String(payload.wallet || ''));
+            if (wallet.length !== 32) throw new Error('Invalid wallet in integrity payload');
+            const hashHex = String(payload.hashHex || '').toLowerCase();
+            if (!/^[0-9a-f]{64}$/.test(hashHex)) throw new Error('Invalid hashHex in integrity payload');
+            const hash = Buffer.from(hashHex, 'hex');
+            const nonce = parseNonceU64(payload.nonce);
+            const timestampSec = parseIntField('timestampSec', payload.timestampSec);
+            const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
+            const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
+            if (latitudeE6 < -90_000_000 || latitudeE6 > 90_000_000) throw new Error('latitudeE6 out of range');
+            if (longitudeE6 < -180_000_000 || longitudeE6 > 180_000_000) throw new Error('longitudeE6 out of range');
+
+            const out = Buffer.alloc(26 + 32 + 32 + 8 + 8 + 8 + 8);
+            let o = 0;
+            Buffer.from('photo-proof-attestation-v1', 'utf8').copy(out, o);
+            o += 26;
+            wallet.copy(out, o);
+            o += 32;
+            hash.copy(out, o);
+            o += 32;
+            out.writeBigUInt64LE(nonce, o);
+            o += 8;
+            out.writeBigInt64LE(BigInt(timestampSec), o);
+            o += 8;
+            out.writeBigInt64LE(BigInt(latitudeE6), o);
+            o += 8;
+            out.writeBigInt64LE(BigInt(longitudeE6), o);
+            return out;
+          }
+
+          const attestationSigner = loadAttestationSigner();
+
           exports.handler = async (event) => {
             const method = event?.requestContext?.http?.method;
             if (method === 'OPTIONS') {
@@ -224,18 +397,31 @@ Resources:
               }
 
               validateLocation(payload.location);
+              const [latRaw, lonRaw] = String(payload.location).split(',');
+              const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
+              const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
+              if (Math.round(Number(latRaw) * 1_000_000) !== latitudeE6) {
+                return response(400, { error: 'latitudeE6 does not match location' });
+              }
+              if (Math.round(Number(lonRaw) * 1_000_000) !== longitudeE6) {
+                return response(400, { error: 'longitudeE6 does not match location' });
+              }
               await validateChainAnchor(payload);
               ensureFreshNonce(String(payload.nonce));
               verifySignature(payload, integrity.signature);
+              const attestationSignature = crypto
+                .sign(null, buildAttestationMessage(payload), attestationSigner)
+                .toString('base64');
 
-              const uploadURL = s3.getSignedUrl('putObject', {
-                Bucket: BUCKET,
-                Key: key,
-                ContentType: contentType,
-                Expires: EXPIRES,
+              const uploadURL = buildPresignedPutUrl(key, EXPIRES);
+
+              return response(200, {
+                uploadURL,
+                key,
+                integrityAccepted: true,
+                attestationSignature,
+                attestationPublicKey: ATTESTATION_PUBLIC_KEY,
               });
-
-              return response(200, { uploadURL, key, integrityAccepted: true });
             } catch (err) {
               return response(400, { error: String(err.message || err) });
             }
