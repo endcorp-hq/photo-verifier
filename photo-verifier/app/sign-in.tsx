@@ -7,22 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useWalletUi } from '@/components/solana/use-wallet-ui'
 
-function ellipsify(value: string, start = 6, end = 6): string {
-  if (value.length <= start + end + 3) return value
-  return `${value.slice(0, start)}...${value.slice(-end)}`
-}
-
 export default function SignIn() {
   const {
     isAuthenticated,
     isSeekerVerified,
-    seekerMint,
-    seekerVerificationError,
     isVerifyingSeeker,
     signIn,
     refreshSeekerVerification,
   } = useAuth()
-  const { account, disconnect } = useWalletUi()
+  const { disconnect } = useWalletUi()
 
   useEffect(() => {
     if (isAuthenticated && isSeekerVerified) {
@@ -30,46 +23,15 @@ export default function SignIn() {
     }
   }, [isAuthenticated, isSeekerVerified])
 
-  const walletLabel = account?.publicKey ? ellipsify(account.publicKey.toBase58()) : null
-
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#07101c', '#0d2237', '#123f50']} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.headerBlock}>
+        <View style={styles.centerBlock}>
           <Image source={require('../assets/images/logo.png')} style={styles.logo} contentFit="contain" />
           <Text style={styles.title}>Photo Verifier</Text>
-          <Text style={styles.subtitle}>Wallet + Seeker verification required</Text>
-        </View>
-
-        <View style={styles.panel}>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Wallet</Text>
-            <Text style={styles.rowValue}>{walletLabel ?? 'Not connected'}</Text>
-          </View>
-
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Seeker NFT</Text>
-            {isVerifyingSeeker ? (
-              <View style={styles.rowInline}>
-                <ActivityIndicator size="small" color="#66f5c5" />
-                <Text style={styles.rowValue}>Verifying...</Text>
-              </View>
-            ) : (
-              <Text style={styles.rowValue}>{isSeekerVerified ? 'Verified' : 'Not verified'}</Text>
-            )}
-          </View>
-
-          {!!seekerMint && (
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Mint</Text>
-              <Text style={styles.rowValue}>{ellipsify(seekerMint, 8, 8)}</Text>
-            </View>
-          )}
-
-          {!!seekerVerificationError && (
-            <Text style={styles.errorText}>Verification error: {seekerVerificationError}</Text>
-          )}
+          <Text style={styles.subtitle}>Wallet + Seeker Genesis Token required for verification</Text>
+          {isVerifyingSeeker ? <ActivityIndicator size="small" color="#66f5c5" /> : null}
         </View>
 
         <View style={styles.actions}>
@@ -103,14 +65,14 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingVertical: 20,
   },
-  headerBlock: {
+  centerBlock: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginTop: 24,
   },
   logo: {
     width: 120,
@@ -126,42 +88,8 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#bed0e7',
     fontSize: 14,
-  },
-  panel: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(196, 214, 240, 0.34)',
-    backgroundColor: 'rgba(7, 18, 33, 0.58)',
-    padding: 14,
-    gap: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  rowInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rowLabel: {
-    color: '#afc2de',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontWeight: '700',
-  },
-  rowValue: {
-    color: '#eef5ff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#ffc8d3',
-    fontSize: 12,
-    marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 280,
   },
   actions: {
     gap: 10,

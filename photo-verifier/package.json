@@ -36,6 +36,7 @@
   "main": "./index.js",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/darker-grotesque": "^0.4.2",
     "@expo/vector-icons": "^14.1.0",
     "@napi-rs/blake-hash": "^1.3.5",
     "@photoverifier/sdk": "workspace:*",
@@ -71,6 +72,7 @@
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.11",
+    "expo-updates": "~0.28.18",
     "expo-web-browser": "~14.2.0",
     "js-base64": "^3.7.8",
     "react": "19.0.0",

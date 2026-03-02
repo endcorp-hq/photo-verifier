@@ -68,7 +68,7 @@ Any of:
 ### Fix
 
 - Ensure SDK tx builder inserts `Ed25519Program` instruction immediately before `record_photo_proof`.
-- Ensure payload includes exact `owner/hash/nonce/timestamp/latitudeE6/longitudeE6` used in tx args.
+- Ensure payload includes exact `owner/hash/nonce/timestamp/h3Cell` used in tx args.
 - Ensure on-chain and backend share same attestation public key.
 
 ## 5) Tree Initialization / Authority Errors

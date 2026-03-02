@@ -97,6 +97,14 @@ export {
   type SeekerDetectionResult,
 } from './modules/seeker';
 
+// H3 helpers
+export {
+  latLngToH3Cell,
+  locationToH3Cell,
+  h3CellToU64,
+  type H3LocationInput,
+} from './modules/h3';
+
 // On-chain transaction helpers - from modules/onchain
 export {
   buildRecordPhotoProofTransaction,
@@ -118,6 +126,7 @@ export {
 
 // Presign helpers - robust response parsing and UX-friendly errors
 export {
+  canonicalizeIntegrityPayload,
   requestAttestedPresignedPut,
   parseAttestedPresignResponse,
   decodeAttestationSignature64,

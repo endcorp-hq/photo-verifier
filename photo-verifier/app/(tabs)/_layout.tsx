@@ -18,13 +18,6 @@ export default function TabLayout() {
       {/* The index redirects to the camera screen */}
       <Tabs.Screen name="index" options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tabs.Screen
-        name="account"
-        options={{
-          title: 'Account',
-          tabBarIcon: ({ color }) => <UiIconSymbol size={28} name="wallet.pass.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="camera"
         options={{
           title: 'Camera',
@@ -41,8 +34,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <UiIconSymbol size={28} name="gearshape.fill" color={color} />,
+          title: 'About',
+          tabBarIcon: ({ color }) => <UiIconSymbol size={28} name="info.circle.fill" color={color} />,
         }}
       />
     </Tabs>

@@ -1,6 +1,6 @@
 # Citizen Science – Photo Verifier (Demo Site)
 
-A Next.js app (Vercel-ready) that displays images from S3 grouped by Seeker mint. It shows hash, location, timestamp, and optional proof JSON and transaction link.
+A Next.js app (Vercel-ready) that displays images from S3 grouped by Seeker mint. It shows hash, H3 cell, timestamp, and optional proof JSON and transaction link.
 
 ## Data layout
 - Keys: `photos/<SEEKER_MINT>/<PHOTO_HASH>.jpg`
@@ -13,7 +13,8 @@ JSON example:
     "hash": "<hex>",
     "uri": "s3://...",
     "timestamp": "2025-01-01T00:00:00.000Z",
-    "location": { "latitude": 0, "longitude": 0, "accuracy": 10 },
+    "h3Cell": "8928308280fffff",
+    "h3Resolution": 9,
     "owner": "<wallet>",
     "seekerMint": "<mint>"
   },

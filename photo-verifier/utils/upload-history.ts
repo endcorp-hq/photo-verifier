@@ -12,8 +12,8 @@ export type UploadHistoryRecord = {
   wallet: string
   seekerMint: string
   hashHex: string
-  latitudeE6: number
-  longitudeE6: number
+  h3Cell: string
+  h3Resolution: number
   txSignature: string
   nonce: string
   remoteUri: string

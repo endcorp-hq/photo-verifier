@@ -45,6 +45,7 @@
     "@photoverifier/core": "workspace:*",
     "@photoverifier/blockchain": "workspace:*",
     "@noble/hashes": "^1.5.0",
+    "h3-reactnative": "github:endcorp-hq/h3-reactnative#4e19a7c445e131977b6a031ecffe86dacbaa7f46",
     "js-base64": "^3.7.8"
   }
 }

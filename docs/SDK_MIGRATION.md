@@ -36,8 +36,8 @@ import {
 const nonce = createNonceU64();
 const payload = buildIntegrityPayload({
   hashHex,
-  latitudeE6,
-  longitudeE6,
+  h3Cell,
+  h3Resolution: 9,
   timestampSec,
   wallet,
   nonce: nonceToString(nonce),
@@ -58,8 +58,7 @@ const tx = await buildRecordPhotoProofTransaction({
   hash32,
   nonce,
   timestampSec,
-  latitudeE6,
-  longitudeE6,
+  h3CellU64: BigInt(`0x${h3Cell}`),
   attestationSignature64: presign.attestationSignature64,
 });
 ```

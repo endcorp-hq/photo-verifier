@@ -1,11 +1,11 @@
 import * as FileSystem from 'expo-file-system'
-import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useFocusEffect } from '@react-navigation/native'
 import { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -40,7 +40,7 @@ export default function GalleryTabScreen() {
     try {
       const items = await listUploadHistory()
       // Gallery only shows completed proofs with wallet signature + tx signature.
-      setRecords(items.filter(item => !!item.txSignature && !!item.hashHex && !!item.wallet))
+      setRecords(items.filter(item => !!item.txSignature && !!item.hashHex && !!item.wallet && (!!item.localUri || !!item.remoteUri)))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -90,12 +90,20 @@ export default function GalleryTabScreen() {
     ({ item }: { item: UploadHistoryRecord }) => {
       const photoUri = item.localUri || item.remoteUri
       const txUrl = `https://solscan.io/tx/${item.txSignature}?cluster=${selectedCluster.network}`
-      const latitude = (item.latitudeE6 / 1_000_000).toFixed(5)
-      const longitude = (item.longitudeE6 / 1_000_000).toFixed(5)
+      const h3Label =
+        item.h3Cell && item.h3Resolution != null
+          ? `${item.h3Cell} (r${item.h3Resolution})`
+          : 'Unknown'
       return (
         <View style={styles.card}>
           <View style={styles.imageWrap}>
-            <Image source={{ uri: photoUri }} style={styles.image} contentFit="cover" />
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.image} resizeMode="cover" />
+            ) : (
+              <View style={[styles.image, styles.imagePlaceholder]}>
+                <Text style={styles.imagePlaceholderText}>Image unavailable</Text>
+              </View>
+            )}
             <LinearGradient colors={['transparent', 'rgba(6,12,24,0.88)']} style={styles.imageFooter}>
               <Text style={styles.imageFooterText}>{formatProofDate(item.timestampSec)}</Text>
             </LinearGradient>
@@ -105,7 +113,7 @@ export default function GalleryTabScreen() {
             <Text style={styles.hashText}>Hash {item.hashHex.slice(0, 10)}...{item.hashHex.slice(-6)}</Text>
             <Text style={styles.metaText}>Slot {item.slot} • {selectedCluster.name}</Text>
             <Text style={styles.metaText}>Wallet {item.wallet.slice(0, 6)}...{item.wallet.slice(-6)}</Text>
-            <Text style={styles.metaText}>Location {latitude}, {longitude}</Text>
+            <Text style={styles.metaText}>H3 {h3Label}</Text>
 
             <View style={styles.actionsRow}>
               <Pressable style={[styles.smallButton, styles.txButton]} onPress={() => Linking.openURL(txUrl)}>
@@ -145,6 +153,10 @@ export default function GalleryTabScreen() {
           data={records}
           keyExtractor={item => item.id}
           renderItem={renderItem}
+          removeClippedSubviews
+          initialNumToRender={4}
+          maxToRenderPerBatch={6}
+          windowSize={7}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#66f5c5" />}
@@ -192,6 +204,16 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  imagePlaceholder: {
+    backgroundColor: '#13233a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePlaceholderText: {
+    color: '#bdd1ea',
+    fontSize: 12,
+    fontWeight: '600',
   },
   imageFooter: {
     position: 'absolute',

@@ -5,17 +5,20 @@ import * as Location from 'expo-location'
 import { Image } from 'expo-image'
 import { Base64 } from 'js-base64'
 import { Buffer } from 'buffer'
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Linking,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native'
-import Snackbar from 'react-native-snackbar'
+import MaterialIcons from '@expo/vector-icons/MaterialIcons'
+import { useFocusEffect, useIsFocused } from '@react-navigation/native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useAuth } from '@/components/auth/auth-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { useConnection } from '@/components/solana/solana-provider'
 import { useWalletUi } from '@/components/solana/use-wallet-ui'
@@ -25,15 +28,35 @@ import {
   buildRecordPhotoProofTransaction,
   buildS3KeyForPhoto,
   buildS3Uri,
+  canonicalizeIntegrityPayload,
   getCurrentLocation,
+  locationToH3Cell,
   putToPresignedUrl,
-  verifySeeker,
 } from '@photoverifier/sdk'
-import { canonicalizeIntegrityPayload } from '@/utils/integrity'
 import { saveUploadHistoryRecord } from '@/utils/upload-history'
 import { PresignError, requestPresignedPut } from '@/utils/s3'
 
 type LocationValue = { latitude: number; longitude: number; accuracy?: number }
+type SubmitSteps = {
+  signedPayload: boolean
+  attestedPayload: boolean
+  uploadedPhoto: boolean
+  submittedOnchain: boolean
+}
+type StepState = 'done' | 'pending' | 'idle'
+type NoticeLevel = 'success' | 'error' | 'info'
+type NoticeState = {
+  level: NoticeLevel
+  title: string
+  message: string
+}
+
+const INITIAL_SUBMIT_STEPS: SubmitSteps = {
+  signedPayload: false,
+  attestedPayload: false,
+  uploadedPhoto: false,
+  submittedOnchain: false,
+}
 
 async function copyPreviewToAppStorage(previewUri: string, hashHex: string): Promise<string | null> {
   const baseDir = FileSystem.documentDirectory
@@ -45,10 +68,22 @@ async function copyPreviewToAppStorage(previewUri: string, hashHex: string): Pro
   return localUri
 }
 
+function isAuthorizationFailure(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error ?? '').toLowerCase()
+  return (
+    message.includes('authorization request failed') ||
+    message.includes('authorization failed') ||
+    message.includes('not authorized')
+  )
+}
+
 export default function TabCameraScreen() {
+  const isFocused = useIsFocused()
+  const insets = useSafeAreaInsets()
   const [facing, setFacing] = useState<CameraType>('back')
   const [permission, requestPermission] = useCameraPermissions()
   const [isReady, setIsReady] = useState(false)
+  const [cameraSessionKey, setCameraSessionKey] = useState(0)
   const [isTaking, setIsTaking] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -62,12 +97,93 @@ export default function TabCameraScreen() {
   const [locationValue, setLocationValue] = useState<LocationValue | null>(null)
   const [seekerLoading, setSeekerLoading] = useState<boolean>(false)
   const [seekerMintValue, setSeekerMintValue] = useState<string | null>(null)
+  const [submitSteps, setSubmitSteps] = useState<SubmitSteps>(INITIAL_SUBMIT_STEPS)
+  const [notice, setNotice] = useState<NoticeState | null>(null)
   const photoBytesRef = useRef<Uint8Array | null>(null)
   const cameraRef = useRef<any>(null)
+  const noticeSlideX = useRef(new Animated.Value(360)).current
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noticeAnimationRef = useRef<Animated.CompositeAnimation | null>(null)
 
-  const { account, signAndSendTransaction, signMessage } = useWalletUi()
+  const { account, connect, signAndSendTransaction, signMessage } = useWalletUi()
+  const { seekerMint: authSeekerMint, isSeekerVerified, refreshSeekerVerification, isVerifyingSeeker } = useAuth()
   const connection = useConnection()
   const { selectedCluster } = useCluster()
+
+  const clearNoticeTimer = useCallback(() => {
+    if (!noticeTimeoutRef.current) return
+    clearTimeout(noticeTimeoutRef.current)
+    noticeTimeoutRef.current = null
+  }, [])
+
+  const stopNoticeAnimation = useCallback(() => {
+    noticeAnimationRef.current?.stop()
+    noticeAnimationRef.current = null
+  }, [])
+
+  const hideNoticeImmediately = useCallback(() => {
+    clearNoticeTimer()
+    stopNoticeAnimation()
+    noticeSlideX.setValue(360)
+    setNotice(null)
+  }, [clearNoticeTimer, noticeSlideX, stopNoticeAnimation])
+
+  const dismissNotice = useCallback(() => {
+    clearNoticeTimer()
+    stopNoticeAnimation()
+    const animation = Animated.timing(noticeSlideX, {
+      toValue: 360,
+      duration: 180,
+      useNativeDriver: false,
+    })
+    noticeAnimationRef.current = animation
+    animation.start(({ finished }) => {
+      noticeAnimationRef.current = null
+      if (finished) setNotice(null)
+    })
+  }, [clearNoticeTimer, noticeSlideX, stopNoticeAnimation])
+
+  const showNotice = useCallback(
+    (payload: NoticeState, autoHideMs = 3400) => {
+      clearNoticeTimer()
+      stopNoticeAnimation()
+      setNotice(payload)
+      noticeSlideX.setValue(360)
+      const animation = Animated.timing(noticeSlideX, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: false,
+      })
+      noticeAnimationRef.current = animation
+      animation.start(() => {
+        noticeAnimationRef.current = null
+      })
+      if (autoHideMs > 0) {
+        noticeTimeoutRef.current = setTimeout(() => {
+          dismissNotice()
+        }, autoHideMs)
+      }
+    },
+    [clearNoticeTimer, dismissNotice, noticeSlideX, stopNoticeAnimation],
+  )
+
+  useEffect(() => {
+    return () => {
+      hideNoticeImmediately()
+    }
+  }, [hideNoticeImmediately])
+
+  useFocusEffect(
+    useCallback(() => {
+      // Force remount on each tab focus to avoid occasional black preview frame.
+      setIsReady(false)
+      setCameraSessionKey(value => value + 1)
+      return () => {
+        setIsReady(false)
+        hideNoticeImmediately()
+      }
+    }, [hideNoticeImmediately]),
+  )
 
   if (!permission) return <View style={styles.container} />
 
@@ -93,41 +209,27 @@ export default function TabCameraScreen() {
     try {
       const servicesEnabled = await Location.hasServicesEnabledAsync()
       if (!servicesEnabled) {
-        Snackbar.show({
-          text: 'Location services are disabled. Enable them to include location metadata.',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-          action: {
-            text: 'Settings',
-            textColor: 'yellow',
-            onPress: () => {
-              try {
-                Linking.openSettings()
-              } catch {}
-            },
+        showNotice(
+          {
+            level: 'error',
+            title: 'Location Disabled',
+            message: 'Enable location services to include location metadata.',
           },
-        })
+          4200,
+        )
         return false
       }
       let perm = await Location.getForegroundPermissionsAsync()
       if (perm.status !== 'granted') perm = await Location.requestForegroundPermissionsAsync()
       if (perm.status !== 'granted') {
-        Snackbar.show({
-          text: 'Location permission denied. Open Settings to grant access.',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-          action: {
-            text: 'Settings',
-            textColor: 'yellow',
-            onPress: () => {
-              try {
-                Linking.openSettings()
-              } catch {}
-            },
+        showNotice(
+          {
+            level: 'error',
+            title: 'Permission Required',
+            message: 'Location permission is required for proof submission.',
           },
-        })
+          4200,
+        )
         return false
       }
       return true
@@ -148,6 +250,7 @@ export default function TabCameraScreen() {
 
       setPreviewUri(captured.uri)
       setIsPreviewing(true)
+      setSubmitSteps(INITIAL_SUBMIT_STEPS)
 
       const base64 =
         typeof captured.base64 === 'string'
@@ -179,13 +282,10 @@ export default function TabCameraScreen() {
       setSeekerLoading(true)
       const seekerPromise = (async () => {
         try {
-          const ownerStr = account?.publicKey?.toString()
-          if (!ownerStr) return null
-          const res = await verifySeeker({
-            walletAddress: ownerStr,
-            rpcUrl: AppConfig.seeker.verificationRpcUrl,
-          })
-          return res.isVerified ? res.mint : null
+          if (seekerMintValue) return seekerMintValue
+          if (isSeekerVerified && authSeekerMint) return authSeekerMint
+          const refreshed = await refreshSeekerVerification()
+          return refreshed.isVerified ? refreshed.mint : null
         } catch {
           return null
         }
@@ -217,12 +317,14 @@ export default function TabCameraScreen() {
           setSeekerLoading(false)
         })
     } catch (e: any) {
-      Snackbar.show({
-        text: `Error: ${e?.message ?? 'Unknown error'}`,
-        duration: Snackbar.LENGTH_SHORT,
-        backgroundColor: 'rgba(176, 0, 32, 0.95)',
-        textColor: 'white',
-      })
+      showNotice(
+        {
+          level: 'error',
+          title: 'Camera Error',
+          message: e?.message ?? 'Unknown error',
+        },
+        4200,
+      )
     } finally {
       setIsTaking(false)
     }
@@ -230,14 +332,13 @@ export default function TabCameraScreen() {
 
   const ensureSeekerMint = async (): Promise<string | null> => {
     if (seekerMintValue) return seekerMintValue
+    if (isSeekerVerified && authSeekerMint) {
+      setSeekerMintValue(authSeekerMint)
+      return authSeekerMint
+    }
     try {
-      const ownerStr = account?.publicKey?.toString()
-      if (!ownerStr) return null
       setSeekerLoading(true)
-      const res = await verifySeeker({
-        walletAddress: ownerStr,
-        rpcUrl: AppConfig.seeker.verificationRpcUrl,
-      })
+      const res = await refreshSeekerVerification()
       const mint = res.isVerified ? res.mint : null
       setSeekerMintValue(mint)
       return mint
@@ -280,6 +381,26 @@ export default function TabCameraScreen() {
     return { slot, blockhash, timestampSec }
   }
 
+  const signMessageWithRecovery = async (message: Uint8Array): Promise<Uint8Array> => {
+    try {
+      return await signMessage(message)
+    } catch (error) {
+      if (!isAuthorizationFailure(error)) throw error
+      await connect()
+      return await signMessage(message)
+    }
+  }
+
+  const signAndSendWithRecovery = async (transaction: any, minContextSlot: number): Promise<string> => {
+    try {
+      return await signAndSendTransaction(transaction, minContextSlot)
+    } catch (error) {
+      if (!isAuthorizationFailure(error)) throw error
+      await connect()
+      return await signAndSendTransaction(transaction, minContextSlot)
+    }
+  }
+
   const handleDiscard = () => {
     if (isSubmitting) return
     setIsPreviewing(false)
@@ -293,6 +414,7 @@ export default function TabCameraScreen() {
     setLocationValue(null)
     setSeekerLoading(false)
     setSeekerMintValue(null)
+    setSubmitSteps(INITIAL_SUBMIT_STEPS)
     photoBytesRef.current = null
   }
 
@@ -300,50 +422,44 @@ export default function TabCameraScreen() {
     if (isSubmitting) return
     try {
       if (!previewUri || !photoHashHex) {
-        Snackbar.show({
-          text: 'Missing preview or hash',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-        })
+        showNotice({ level: 'error', title: 'Missing Data', message: 'Missing preview or hash.' }, 3200)
         return
       }
       if (!account?.publicKey) {
-        Snackbar.show({
-          text: 'Connect wallet first',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-        })
+        showNotice({ level: 'error', title: 'Wallet Required', message: 'Connect wallet first.' }, 3200)
         return
       }
 
       setIsSubmitting(true)
+      setSubmitSteps(INITIAL_SUBMIT_STEPS)
 
       const seekerMint = await ensureSeekerMint()
       if (!seekerMint) {
-        Snackbar.show({
-          text: 'Requires Seeker Genesis Token in connected wallet',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(33,33,33,0.95)',
-          textColor: 'white',
-        })
+        showNotice(
+          {
+            level: 'error',
+            title: 'Seeker Required',
+            message: 'Connected wallet must hold a Seeker Genesis Token.',
+          },
+          4200,
+        )
         return
       }
 
       const location = await ensureLocation()
       if (!location) {
-        Snackbar.show({
-          text: 'Location is required for proof submission',
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-        })
+        showNotice(
+          {
+            level: 'error',
+            title: 'Location Required',
+            message: 'Location is required for proof submission.',
+          },
+          4200,
+        )
         return
       }
-      const locationString = `${location.latitude},${location.longitude}`
-      const latitudeE6 = Math.round(location.latitude * 1_000_000)
-      const longitudeE6 = Math.round(location.longitude * 1_000_000)
+      const h3Resolution = AppConfig.h3.resolution
+      const h3Cell = locationToH3Cell(location, h3Resolution)
 
       const { slot, blockhash, timestampSec } = await ensureBlockAnchor()
 
@@ -358,9 +474,8 @@ export default function TabCameraScreen() {
       const nonce = nonceBigInt.toString()
       const integrityPayload = {
         hashHex: photoHashHex,
-        location: locationString,
-        latitudeE6,
-        longitudeE6,
+        h3Cell,
+        h3Resolution,
         timestampSec,
         wallet: account.publicKey.toBase58(),
         nonce,
@@ -368,8 +483,9 @@ export default function TabCameraScreen() {
         blockhash,
       }
       const canonicalPayload = canonicalizeIntegrityPayload(integrityPayload)
-      const sigBytes = await signMessage(new TextEncoder().encode(canonicalPayload))
+      const sigBytes = await signMessageWithRecovery(new TextEncoder().encode(canonicalPayload))
       const signatureB64 = Base64.fromUint8Array(sigBytes)
+      setSubmitSteps(current => ({ ...current, signedPayload: true }))
 
       let uploadURL = ''
       let returnedKey = key
@@ -387,6 +503,7 @@ export default function TabCameraScreen() {
         uploadURL = presign.uploadURL
         returnedKey = presign.key || key
         attestationSignatureBytes = presign.attestationSignature64
+        setSubmitSteps(current => ({ ...current, attestedPayload: true }))
       } catch (err: any) {
         const code = err instanceof PresignError ? err.code : ''
         const friendly =
@@ -395,12 +512,7 @@ export default function TabCameraScreen() {
             : code === 'PRESIGN_INVALID_ATTESTATION_SIGNATURE'
               ? 'Presign API returned malformed attestation signature'
               : `Could not authorize upload: ${err?.message ?? 'unknown error'}`
-        Snackbar.show({
-          text: friendly,
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'rgba(176,0,32,0.95)',
-          textColor: 'white',
-        })
+        showNotice({ level: 'error', title: 'Presign Failed', message: friendly }, 5000)
         return
       }
 
@@ -412,14 +524,9 @@ export default function TabCameraScreen() {
         uploadBytes = Uint8Array.from(Buffer.from(fallbackBase64, 'base64'))
         photoBytesRef.current = uploadBytes
       }
-      await putToPresignedUrl({ url: uploadURL, bytes: uploadBytes, contentType: AppConfig.s3.defaultContentType })
-
       const remoteUri = buildS3Uri(AppConfig.s3.bucket, returnedKey || key)
       if (!remoteUri || remoteUri.length > 256) {
         throw new Error('Invalid S3 URI generated for proof')
-      }
-      if (locationString.length > 256) {
-        throw new Error('Location string too long for program constraints')
       }
 
       const hashBytes = Uint8Array.from(Buffer.from(photoHashHex, 'hex'))
@@ -427,23 +534,28 @@ export default function TabCameraScreen() {
         throw new Error('Missing valid attestation signature from presign API')
       }
 
-      const { transaction } = await buildRecordPhotoProofTransaction({
+      const txBuildPromise = buildRecordPhotoProofTransaction({
         connection,
         owner: account.publicKey,
         hash32: hashBytes,
         nonce: nonceBigInt,
         timestampSec: Math.floor(timestampSec),
-        latitudeE6,
-        longitudeE6,
+        h3CellU64: BigInt(`0x${h3Cell}`),
         attestationSignature64: attestationSignatureBytes,
       })
+      const minContextSlotPromise = connection.getLatestBlockhashAndContext().then(({ context }) => context.slot)
+      const uploadPromise = putToPresignedUrl({
+        url: uploadURL,
+        bytes: uploadBytes,
+        contentType: AppConfig.s3.defaultContentType,
+      })
 
-      const {
-        context: { slot: minContextSlot },
-      } = await connection.getLatestBlockhashAndContext()
+      const [txBuild, minContextSlot] = await Promise.all([txBuildPromise, minContextSlotPromise])
+      await uploadPromise
+      setSubmitSteps(current => ({ ...current, uploadedPhoto: true }))
 
-      const txSignature = await signAndSendTransaction(transaction as any, minContextSlot)
-      await connection.confirmTransaction(txSignature, 'confirmed')
+      const txSignature = await signAndSendWithRecovery(txBuild.transaction as any, minContextSlot)
+      setSubmitSteps(current => ({ ...current, submittedOnchain: true }))
       const localUri = await copyPreviewToAppStorage(previewUri, photoHashHex).catch(() => null)
 
       await saveUploadHistoryRecord({
@@ -453,30 +565,37 @@ export default function TabCameraScreen() {
         wallet: account.publicKey.toBase58(),
         seekerMint,
         hashHex: photoHashHex,
-        latitudeE6,
-        longitudeE6,
+        h3Cell,
+        h3Resolution,
         txSignature,
         nonce,
         remoteUri,
         localUri,
       })
 
-      Snackbar.show({
-        text: `Proof submitted on ${selectedCluster.name}`,
-        duration: Snackbar.LENGTH_SHORT,
-        backgroundColor: 'rgba(76, 175, 80, 0.95)',
-        textColor: 'white',
-      })
+      showNotice(
+        {
+          level: 'success',
+          title: 'Proof Submitted',
+          message: `Submitted on ${selectedCluster.name}.`,
+        },
+        3600,
+      )
 
       handleDiscard()
     } catch (e: any) {
       console.log('Upload error', e)
-      Snackbar.show({
-        text: `Submit failed: ${e?.message ?? 'unknown error'}`,
-        duration: Snackbar.LENGTH_SHORT,
-        backgroundColor: 'rgba(176,0,32,0.95)',
-        textColor: 'white',
-      })
+      const friendlyMessage = isAuthorizationFailure(e)
+        ? 'Wallet authorization failed. Reconnect wallet and retry submit.'
+        : e?.message ?? 'unknown error'
+      showNotice(
+        {
+          level: 'error',
+          title: 'Submit Failed',
+          message: friendlyMessage,
+        },
+        5000,
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -485,26 +604,105 @@ export default function TabCameraScreen() {
   const chainReady = Boolean(timestampIso && captureSlot)
   const locationReady = Boolean(locationValue)
   const seekerReady = Boolean(seekerMintValue)
+  const seekerBusy = seekerLoading || isVerifyingSeeker
+  const hasSubmitProgress =
+    submitSteps.signedPayload ||
+    submitSteps.attestedPayload ||
+    submitSteps.uploadedPhoto ||
+    submitSteps.submittedOnchain
+
+  const captureChecklist = [
+    { label: 'Photo hashed', done: Boolean(photoHashHex), pending: false },
+    { label: 'Chain timestamp locked', done: chainReady, pending: !chainReady },
+    { label: 'GPS locked for H3 cell', done: locationReady, pending: locationLoading },
+    { label: 'Seeker token verified', done: seekerReady, pending: seekerBusy },
+  ]
+
+  const previewH3Cell = locationValue ? locationToH3Cell(locationValue, AppConfig.h3.resolution) : null
+
+  const submitChecklist = [
+    { label: 'Wallet signed payload', done: submitSteps.signedPayload, pending: isSubmitting && !submitSteps.signedPayload },
+    {
+      label: 'Server attestation received',
+      done: submitSteps.attestedPayload,
+      pending: isSubmitting && submitSteps.signedPayload && !submitSteps.attestedPayload,
+    },
+    {
+      label: 'Photo uploaded to storage',
+      done: submitSteps.uploadedPhoto,
+      pending: isSubmitting && submitSteps.attestedPayload && !submitSteps.uploadedPhoto,
+    },
+    {
+      label: 'Proof submitted on-chain',
+      done: submitSteps.submittedOnchain,
+      pending: isSubmitting && submitSteps.uploadedPhoto && !submitSteps.submittedOnchain,
+    },
+  ]
+
+  const getStepState = (done: boolean, pending: boolean): StepState => {
+    if (done) return 'done'
+    if (pending) return 'pending'
+    return 'idle'
+  }
+
+  const getStepIconName = (state: StepState): keyof typeof MaterialIcons.glyphMap => {
+    if (state === 'done') return 'check-circle'
+    if (state === 'pending') return 'hourglass-top'
+    return 'radio-button-unchecked'
+  }
+
+  const getStepIconColor = (state: StepState): string => {
+    if (state === 'done') return '#66f5c5'
+    if (state === 'pending') return '#ffd66a'
+    return '#89a3c2'
+  }
+
+  const noticeColorStyle =
+    notice?.level === 'success'
+      ? styles.noticeSuccess
+      : notice?.level === 'error'
+        ? styles.noticeError
+        : styles.noticeInfo
 
   return (
     <View style={styles.container}>
+      {notice ? (
+        <Animated.View
+          style={[
+            styles.noticeWrap,
+            { top: insets.top + 8, transform: [{ translateX: noticeSlideX }] },
+          ]}
+          pointerEvents="box-none"
+        >
+          <View style={[styles.noticeCard, noticeColorStyle]}>
+            <View style={styles.noticeHeader}>
+              <Text style={styles.noticeTitle} numberOfLines={1}>
+                {notice.title}
+              </Text>
+              <Pressable onPress={dismissNotice} hitSlop={8}>
+                <MaterialIcons name="chevron-right" size={18} color="#d8e5f9" />
+              </Pressable>
+            </View>
+            <Text style={styles.noticeMessage} numberOfLines={3}>
+              {notice.message}
+            </Text>
+          </View>
+        </Animated.View>
+      ) : null}
+
       {!isPreviewing ? (
         <>
-          <CameraView
-            ref={cameraRef}
-            style={styles.camera}
-            facing={facing}
-            onCameraReady={() => setIsReady(true)}
-          />
-
-          <LinearGradient
-            colors={['rgba(10,15,20,0.84)', 'rgba(10,15,20,0)']}
-            style={styles.topOverlay}
-            pointerEvents="none"
-          >
-            <Text style={styles.appTitle}>Proof Camera</Text>
-            <Text style={styles.appSubtitle}>Capture. Attest. Commit on-chain.</Text>
-          </LinearGradient>
+          {isFocused ? (
+            <CameraView
+              key={cameraSessionKey}
+              ref={cameraRef}
+              style={styles.camera}
+              facing={facing}
+              onCameraReady={() => setIsReady(true)}
+            />
+          ) : (
+            <View style={styles.camera} />
+          )}
 
           <LinearGradient
             colors={['rgba(10,15,20,0)', 'rgba(10,15,20,0.95)']}
@@ -524,9 +722,7 @@ export default function TabCameraScreen() {
                 <View style={[styles.captureInner, (!isReady || isTaking || isSubmitting) && styles.captureInnerDisabled]} />
               </TouchableOpacity>
 
-              <View style={styles.readyPill}>
-                <Text style={styles.readyPillText}>{isReady ? 'Ready' : 'Loading'}</Text>
-              </View>
+              <View style={styles.controlSpacer} />
             </View>
           </LinearGradient>
         </>
@@ -540,50 +736,70 @@ export default function TabCameraScreen() {
           </LinearGradient>
 
           <LinearGradient colors={['transparent', 'rgba(7,10,14,0.94)']} style={styles.previewBottomOverlay}>
-            <View style={styles.chipRow}>
-              <View style={[styles.statusChip, chainReady ? styles.statusChipOk : styles.statusChipLoading]}>
-                <Text style={styles.statusChipText}>{chainReady ? 'Chain time locked' : 'Locking chain time'}</Text>
+            <View style={styles.previewPanel}>
+              <View style={styles.checklistCard}>
+                <Text style={styles.checklistTitle}>Verification Steps</Text>
+                {captureChecklist.map(step => {
+                  const state = getStepState(step.done, step.pending)
+                  return (
+                    <View key={step.label} style={styles.checklistRow}>
+                      <MaterialIcons name={getStepIconName(state)} size={17} color={getStepIconColor(state)} />
+                      <Text style={styles.checklistText}>{step.label}</Text>
+                    </View>
+                  )
+                })}
               </View>
-              <View style={[styles.statusChip, locationReady ? styles.statusChipOk : styles.statusChipLoading]}>
-                <Text style={styles.statusChipText}>{locationLoading ? 'Resolving GPS' : locationReady ? 'GPS ready' : 'GPS needed'}</Text>
+
+              {isSubmitting || hasSubmitProgress ? (
+                <View style={styles.checklistCard}>
+                  <Text style={styles.checklistTitle}>Submit Steps</Text>
+                  {submitChecklist.map(step => {
+                    const state = getStepState(step.done, step.pending)
+                    return (
+                      <View key={step.label} style={styles.checklistRow}>
+                        <MaterialIcons name={getStepIconName(state)} size={17} color={getStepIconColor(state)} />
+                        <Text style={styles.checklistText}>{step.label}</Text>
+                      </View>
+                    )
+                  })}
+                </View>
+              ) : null}
+
+              <View style={styles.metaGrid}>
+                <View style={[styles.metaRow, styles.metaHalf]}>
+                  <Text style={styles.metaLabel}>Timestamp</Text>
+                  <Text style={styles.metaValue} numberOfLines={2}>
+                    {timestampIso ?? 'Resolving from chain...'}
+                  </Text>
+                </View>
+
+                <View style={[styles.metaRow, styles.metaHalf]}>
+                  <Text style={styles.metaLabel}>H3 Cell</Text>
+                  <Text style={styles.metaValue} numberOfLines={2}>
+                    {previewH3Cell ? `${previewH3Cell} (r${AppConfig.h3.resolution})` : 'Requires location permission'}
+                  </Text>
+                </View>
               </View>
-              <View style={[styles.statusChip, seekerReady ? styles.statusChipOk : styles.statusChipLoading]}>
-                <Text style={styles.statusChipText}>{seekerLoading ? 'Checking token' : seekerReady ? 'Seeker verified' : 'Seeker required'}</Text>
+
+              <View style={styles.actionRow}>
+                <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={handleDiscard} disabled={isSubmitting}>
+                  <Text style={styles.secondaryButtonText}>Retake</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionButton, styles.primaryButton, isSubmitting && styles.primaryButtonBusy]}
+                  onPress={handleUploadAndSubmit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <View style={styles.submitBusyRow}>
+                      <ActivityIndicator size="small" color="#061219" />
+                      <Text style={styles.primaryButtonText}>Submitting</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Submit Proof</Text>
+                  )}
+                </Pressable>
               </View>
-            </View>
-
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Timestamp</Text>
-              <Text style={styles.metaValue}>{timestampIso ?? 'Resolving from chain...'}</Text>
-            </View>
-
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Location</Text>
-              <Text style={styles.metaValue}>
-                {locationValue
-                  ? `${locationValue.latitude.toFixed(5)}, ${locationValue.longitude.toFixed(5)}`
-                  : 'Required for proof'}
-              </Text>
-            </View>
-
-            <View style={styles.actionRow}>
-              <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={handleDiscard} disabled={isSubmitting}>
-                <Text style={styles.secondaryButtonText}>Retake</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.actionButton, styles.primaryButton, isSubmitting && styles.primaryButtonBusy]}
-                onPress={handleUploadAndSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <View style={styles.submitBusyRow}>
-                    <ActivityIndicator size="small" color="#061219" />
-                    <Text style={styles.primaryButtonText}>Submitting</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.primaryButtonText}>Submit Proof</Text>
-                )}
-              </Pressable>
             </View>
           </LinearGradient>
         </View>
@@ -596,6 +812,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#05090e',
+  },
+  noticeWrap: {
+    position: 'absolute',
+    right: 10,
+    width: 280,
+    zIndex: 50,
+  },
+  noticeCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+  },
+  noticeSuccess: {
+    backgroundColor: 'rgba(14, 50, 37, 0.96)',
+    borderColor: 'rgba(102, 245, 197, 0.58)',
+  },
+  noticeError: {
+    backgroundColor: 'rgba(67, 14, 24, 0.96)',
+    borderColor: 'rgba(255, 122, 144, 0.58)',
+  },
+  noticeInfo: {
+    backgroundColor: 'rgba(17, 32, 51, 0.96)',
+    borderColor: 'rgba(145, 173, 206, 0.58)',
+  },
+  noticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  noticeTitle: {
+    color: '#eef5ff',
+    fontSize: 13,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
+  },
+  noticeMessage: {
+    color: '#d8e5f9',
+    fontSize: 12,
+    lineHeight: 16,
   },
   permissionContainer: {
     justifyContent: 'center',
@@ -626,26 +889,6 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
-  },
-  topOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 68,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  appTitle: {
-    color: '#eef4ff',
-    fontSize: 30,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  appSubtitle: {
-    color: '#bfd0e9',
-    fontSize: 13,
-    marginTop: 6,
   },
   bottomOverlay: {
     position: 'absolute',
@@ -694,21 +937,9 @@ const styles = StyleSheet.create({
   captureInnerDisabled: {
     opacity: 0.45,
   },
-  readyPill: {
-    minWidth: 64,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(236, 244, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(238, 244, 255, 0.28)',
-    alignItems: 'center',
-  },
-  readyPillText: {
-    color: '#dce9fb',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+  controlSpacer: {
+    width: 64,
+    height: 64,
   },
   previewContainer: {
     flex: 1,
@@ -742,42 +973,63 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 18,
-    paddingTop: 90,
+    paddingTop: 80,
     paddingBottom: 22,
-    gap: 12,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  statusChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
+  previewPanel: {
+    borderRadius: 18,
+    backgroundColor: 'rgba(7, 13, 24, 0.76)',
     borderWidth: 1,
+    borderColor: 'rgba(175, 194, 222, 0.2)',
+    padding: 12,
+    gap: 10,
   },
-  statusChipOk: {
-    backgroundColor: 'rgba(102, 245, 197, 0.18)',
-    borderColor: 'rgba(102, 245, 197, 0.52)',
+  checklistCard: {
+    borderRadius: 10,
+    backgroundColor: 'rgba(7, 17, 29, 0.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(175, 194, 222, 0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
   },
-  statusChipLoading: {
-    backgroundColor: 'rgba(200, 214, 236, 0.18)',
-    borderColor: 'rgba(200, 214, 236, 0.42)',
+  checklistTitle: {
+    color: '#d7e7ff',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
-  statusChipText: {
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(12, 24, 40, 0.34)',
+  },
+  checklistText: {
     color: '#eef4ff',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+    flex: 1,
+  },
+  metaGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metaHalf: {
+    flex: 1,
   },
   metaRow: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
     backgroundColor: 'rgba(7, 17, 29, 0.52)',
     borderWidth: 1,
     borderColor: 'rgba(175, 194, 222, 0.22)',
-    gap: 4,
+    gap: 3,
   },
   metaLabel: {
     color: '#adc0dc',
@@ -794,7 +1046,7 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 4,
+    marginTop: 2,
   },
   actionButton: {
     flex: 1,

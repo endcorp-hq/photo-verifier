@@ -2,9 +2,8 @@ import { Base64 } from 'js-base64';
 
 export type PresignIntegrityPayload = {
   hashHex: string;
-  location: string;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3Cell: string;
+  h3Resolution?: number;
   timestampSec: number;
   wallet: string;
   nonce: string;
@@ -17,6 +16,19 @@ export type PresignIntegrityEnvelope = {
   payload: PresignIntegrityPayload;
   signature: string;
 };
+
+export function canonicalizeIntegrityPayload(payload: PresignIntegrityPayload): string {
+  return JSON.stringify({
+    hashHex: payload.hashHex,
+    h3Cell: payload.h3Cell,
+    h3Resolution: payload.h3Resolution,
+    timestampSec: payload.timestampSec,
+    wallet: payload.wallet,
+    nonce: payload.nonce,
+    slot: payload.slot,
+    blockhash: payload.blockhash,
+  });
+}
 
 export type AttestedPresignResponse = {
   uploadURL: string;

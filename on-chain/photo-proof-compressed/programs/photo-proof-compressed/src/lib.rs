@@ -53,8 +53,8 @@ pub enum PhotoProofError {
     TreeFull,
     #[msg("Invalid timestamp")]
     InvalidTimestamp,
-    #[msg("Invalid coordinates")]
-    InvalidCoordinates,
+    #[msg("Invalid H3 index")]
+    InvalidH3Index,
     #[msg("Tree account mismatch")]
     InvalidTreeAccount,
     #[msg("Invalid authority")]
@@ -128,8 +128,7 @@ pub struct RecordPhotoProofArgs {
     pub hash: [u8; 32],
     pub nonce: u64,
     pub timestamp: i64,
-    pub latitude: i64,
-    pub longitude: i64,
+    pub h3_index: u64,
     pub attestation_signature: [u8; 64],
 }
 
@@ -213,15 +212,7 @@ pub mod photo_proof_compressed {
             PhotoProofError::InvalidTimestamp
         );
 
-        // Validate coordinates (scaled by 1e6)
-        require!(
-            args.latitude >= -90_000_000 && args.latitude <= 90_000_000,
-            PhotoProofError::InvalidCoordinates
-        );
-        require!(
-            args.longitude >= -180_000_000 && args.longitude <= 180_000_000,
-            PhotoProofError::InvalidCoordinates
-        );
+        require!(args.h3_index != 0, PhotoProofError::InvalidH3Index);
         require_keys_eq!(
             tree_merkle,
             ctx.accounts.merkle_tree.key(),
@@ -265,14 +256,13 @@ pub mod photo_proof_compressed {
         tree_config.current_count = current_count.checked_add(1).unwrap();
 
         msg!(
-            "Appended compressed proof: hash_prefix={:?}, owner={}, nonce={}, fee_lamports={}, time={}, pos=({},{})",
+            "Appended compressed proof: hash_prefix={:?}, owner={}, nonce={}, fee_lamports={}, time={}, h3=0x{:x}",
             &args.hash[..8],
             ctx.accounts.owner.key(),
             args.nonce,
             RECORD_FEE_LAMPORTS,
             args.timestamp,
-            args.latitude as f64 / 1_000_000.0,
-            args.longitude as f64 / 1_000_000.0
+            args.h3_index
         );
 
         Ok(())
@@ -282,29 +272,26 @@ pub mod photo_proof_compressed {
 fn derive_leaf(owner: &Pubkey, args: &RecordPhotoProofArgs) -> [u8; 32] {
     let nonce_bytes = args.nonce.to_le_bytes();
     let timestamp_bytes = args.timestamp.to_le_bytes();
-    let latitude_bytes = args.latitude.to_le_bytes();
-    let longitude_bytes = args.longitude.to_le_bytes();
+    let h3_index_bytes = args.h3_index.to_le_bytes();
     hashv(&[
         b"photo-proof-v2",
         owner.as_ref(),
         &args.hash,
         &nonce_bytes,
         &timestamp_bytes,
-        &latitude_bytes,
-        &longitude_bytes,
+        &h3_index_bytes,
     ])
     .to_bytes()
 }
 
 fn build_attestation_message(owner: &Pubkey, args: &RecordPhotoProofArgs) -> Vec<u8> {
-    let mut out = Vec::with_capacity(ATTESTATION_PREFIX.len() + 32 + 32 + 8 + 8 + 8 + 8);
+    let mut out = Vec::with_capacity(ATTESTATION_PREFIX.len() + 32 + 32 + 8 + 8 + 8);
     out.extend_from_slice(ATTESTATION_PREFIX);
     out.extend_from_slice(owner.as_ref());
     out.extend_from_slice(&args.hash);
     out.extend_from_slice(&args.nonce.to_le_bytes());
     out.extend_from_slice(&args.timestamp.to_le_bytes());
-    out.extend_from_slice(&args.latitude.to_le_bytes());
-    out.extend_from_slice(&args.longitude.to_le_bytes());
+    out.extend_from_slice(&args.h3_index.to_le_bytes());
     out
 }
 

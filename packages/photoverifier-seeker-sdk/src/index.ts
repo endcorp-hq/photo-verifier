@@ -1,4 +1,5 @@
 import { Base64 } from 'js-base64';
+import { canonicalizeIntegrityPayload as canonicalizePayload } from '@photoverifier/sdk';
 import type { PresignIntegrityEnvelope, PresignIntegrityPayload } from '@photoverifier/sdk';
 
 // Re-export seeker-centric primitives from the base SDK.
@@ -9,9 +10,13 @@ export {
   getCurrentLocation,
   putToPresignedUrl,
   verifySeeker,
+  latLngToH3Cell,
+  locationToH3Cell,
+  h3CellToU64,
   buildRecordPhotoProofTransaction,
   buildRecordPhotoProofInstruction,
   buildAttestationMessage,
+  canonicalizeIntegrityPayload,
   requestAttestedPresignedPut,
   parseAttestedPresignResponse,
   decodeAttestationSignature64,
@@ -29,14 +34,13 @@ export type IntegrityEnvelopeSigner = (message: Uint8Array) => Promise<Uint8Arra
 
 export type BuildIntegrityPayloadParams = {
   hashHex: string;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3Cell: string;
+  h3Resolution?: number;
   timestampSec: number;
   wallet: string;
   nonce: string;
   slot: number;
   blockhash: string;
-  location?: string;
 };
 
 export function createNonceU64(nowMs: number = Date.now(), randomBits: number = 20): bigint {
@@ -50,12 +54,10 @@ export function nonceToString(nonce: bigint): string {
 }
 
 export function buildIntegrityPayload(params: BuildIntegrityPayloadParams): PresignIntegrityPayload {
-  const location = params.location ?? `${params.latitudeE6 / 1_000_000},${params.longitudeE6 / 1_000_000}`;
   return {
     hashHex: params.hashHex,
-    location,
-    latitudeE6: params.latitudeE6,
-    longitudeE6: params.longitudeE6,
+    h3Cell: params.h3Cell,
+    h3Resolution: params.h3Resolution,
     timestampSec: params.timestampSec,
     wallet: params.wallet,
     nonce: params.nonce,
@@ -64,25 +66,11 @@ export function buildIntegrityPayload(params: BuildIntegrityPayloadParams): Pres
   };
 }
 
-export function canonicalizeIntegrityPayload(payload: PresignIntegrityPayload): string {
-  return JSON.stringify({
-    hashHex: payload.hashHex,
-    location: payload.location,
-    latitudeE6: payload.latitudeE6,
-    longitudeE6: payload.longitudeE6,
-    timestampSec: payload.timestampSec,
-    wallet: payload.wallet,
-    nonce: payload.nonce,
-    slot: payload.slot,
-    blockhash: payload.blockhash,
-  });
-}
-
 export async function createIntegrityEnvelope(
   payload: PresignIntegrityPayload,
   sign: IntegrityEnvelopeSigner
 ): Promise<PresignIntegrityEnvelope> {
-  const canonical = canonicalizeIntegrityPayload(payload);
+  const canonical = canonicalizePayload(payload);
   const sigBytes = await sign(new TextEncoder().encode(canonical));
   return {
     version: 'v1',

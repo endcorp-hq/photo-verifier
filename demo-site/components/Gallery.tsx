@@ -19,7 +19,7 @@ type PhotoItem = {
   nonce?: string | null;
   // Optional metadata from proof file if present
   timestamp?: string;
-  location?: string | null;
+  h3Cell?: string | null;
   owner?: string | null;
   signature?: string | null;
   proofUrl?: string | null;
@@ -33,7 +33,7 @@ type ApiResponse = {
     hashHex: string;
     payer: string;
     timestamp: string | null;
-    location: string;
+    h3Cell: string;
     nonce: string;
     url: string;
   }>;
@@ -245,7 +245,7 @@ export default function Gallery() {
                   ) : (
                     <div className="row"><strong>Image Hash</strong>: <span className="pending-badge">Checking…</span></div>
                   )}
-                  <div className="row"><strong>Location</strong>: <span className="location">{formatLocation(item.location)}</span></div>
+                  <div className="row"><strong>H3 Cell</strong>: <span className="location">{formatH3Cell(item.h3Cell)}</span></div>
                   <div className="row"><strong>Timestamp</strong>: <span className="timestamp">{item.timestamp || "—"}</span></div>
                   <div className="row"><strong>Owner</strong>: <span className="owner">{formatOwner(item.owner)}</span></div>
                   {item.signature ? (
@@ -291,7 +291,7 @@ export default function Gallery() {
                 <div><strong>Hash</strong>: {formatHash(proof.hashHex)}</div>
                 <div><strong>Owner</strong>: {formatHash(proof.payer)}</div>
                 <div><strong>Timestamp</strong>: {proof.timestamp ?? "—"}</div>
-                <div><strong>Location</strong>: {proof.location}</div>
+                <div><strong>H3 Cell</strong>: {formatH3Cell(proof.h3Cell)}</div>
                 <div><strong>Nonce</strong>: {proof.nonce}</div>
               </div>
             ))}
@@ -302,9 +302,9 @@ export default function Gallery() {
   );
 }
 
-function formatLocation(loc: PhotoItem["location"]) {
-  if (!loc) return "—";
-  return String(loc);
+function formatH3Cell(cell?: string | null) {
+  if (!cell) return "—";
+  return String(cell).toLowerCase();
 }
 
 function formatHash(hash?: string | null) {

@@ -3,7 +3,7 @@ import { useMobileWallet } from '@/components/solana/use-mobile-wallet'
 import { Account, useAuthorization } from '@/components/solana/use-authorization'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AppConfig } from '@/constants/app-config'
-import { verifySeeker } from '@photoverifier/sdk'
+import { clearSeekerVerificationCache, verifySeekerCached } from '@/utils/seeker-verification'
 
 export interface AuthState {
   isAuthenticated: boolean
@@ -14,7 +14,7 @@ export interface AuthState {
   isLoading: boolean
   signIn: () => Promise<Account>
   signOut: () => Promise<void>
-  refreshSeekerVerification: () => Promise<void>
+  refreshSeekerVerification: () => Promise<{ isVerified: boolean; mint: string | null }>
 }
 
 const Context = createContext<AuthState>({} as AuthState)
@@ -40,16 +40,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const { disconnect } = useMobileWallet()
   const { accounts, isLoading, selectedAccount } = useAuthorization()
   const signInMutation = useSignInMutation()
+  const walletAddress = selectedAccount?.publicKey?.toBase58() ?? null
 
   const seekerVerification = useQuery({
-    queryKey: ['seeker-verification', selectedAccount?.publicKey.toBase58(), AppConfig.seeker.verificationRpcUrl],
-    enabled: !!selectedAccount?.publicKey,
-    staleTime: 60_000,
+    queryKey: ['seeker-verification', walletAddress, AppConfig.seeker.verificationRpcUrl],
+    enabled: !!walletAddress,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
     retry: 1,
     queryFn: async () => {
-      if (!selectedAccount?.publicKey) return { isVerified: false, mint: null }
-      return await verifySeeker({
-        walletAddress: selectedAccount.publicKey.toBase58(),
+      if (!walletAddress) return { isVerified: false, mint: null }
+      return await verifySeekerCached({
+        walletAddress,
         rpcUrl: AppConfig.seeker.verificationRpcUrl,
       })
     },
@@ -67,7 +70,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const value: AuthState = useMemo(
     () => ({
       signIn: async () => await signInMutation.mutateAsync(),
-      signOut: async () => await disconnect(),
+      signOut: async () => {
+        if (walletAddress) clearSeekerVerificationCache(walletAddress)
+        await disconnect()
+      },
       isAuthenticated: (accounts?.length ?? 0) > 0,
       isSeekerVerified,
       seekerMint,
@@ -75,7 +81,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isVerifyingSeeker,
       isLoading: signInMutation.isPending || isLoading || isVerifyingSeeker,
       refreshSeekerVerification: async () => {
-        await seekerVerification.refetch()
+        if (!walletAddress) return { isVerified: false, mint: null }
+        clearSeekerVerificationCache(walletAddress)
+        const refreshed = await seekerVerification.refetch()
+        return refreshed.data ?? { isVerified: false, mint: null }
       },
     }),
     [
@@ -88,6 +97,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       seekerVerification,
       seekerVerificationError,
       signInMutation,
+      walletAddress,
     ],
   )
 

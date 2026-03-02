@@ -4,7 +4,7 @@ import React from 'react'
 
 export default function SettingsLayout() {
   return (
-    <Stack screenOptions={{ headerTitle: 'Settings', headerRight: () => <WalletUiDropdown /> }}>
+    <Stack screenOptions={{ headerTitle: 'About', headerRight: () => <WalletUiDropdown /> }}>
       <Stack.Screen name="index" />
     </Stack>
   )

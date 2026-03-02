@@ -28,24 +28,26 @@ export function AppText({ style, lightColor, darkColor, type = 'default', ...res
 
 const styles = StyleSheet.create({
   default: {
+    fontFamily: 'DarkerGrotesque_500Medium',
     fontSize: 16,
     lineHeight: 24,
   },
   defaultSemiBold: {
+    fontFamily: 'DarkerGrotesque_700Bold',
     fontSize: 16,
     lineHeight: 24,
-    fontWeight: '600',
   },
   title: {
+    fontFamily: 'DarkerGrotesque_700Bold',
     fontSize: 32,
-    fontWeight: 'bold',
     lineHeight: 32,
   },
   subtitle: {
+    fontFamily: 'DarkerGrotesque_700Bold',
     fontSize: 20,
-    fontWeight: 'bold',
   },
   link: {
+    fontFamily: 'DarkerGrotesque_500Medium',
     lineHeight: 30,
     fontSize: 16,
     color: '#0a7ea4',

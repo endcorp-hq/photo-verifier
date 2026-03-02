@@ -1,38 +1,61 @@
 import { PortalHost } from '@rn-primitives/portal'
 import { useFonts } from 'expo-font'
+import {
+  DarkerGrotesque_400Regular,
+  DarkerGrotesque_500Medium,
+  DarkerGrotesque_700Bold,
+} from '@expo-google-fonts/darker-grotesque'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 import { AppProviders } from '@/components/app-providers'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
-import { View } from 'react-native'
-import { useTrackLocations } from '@/hooks/use-track-locations'
+import { Text, TextInput, View } from 'react-native'
 import { AppSplashController } from '@/components/app-splash-controller'
 import { useAuth } from '@/components/auth/auth-provider'
 
+const APP_FONT_FAMILY = 'DarkerGrotesque_500Medium'
+let globalFontApplied = false
+
+function withDefaultFontStyle(style: unknown): unknown {
+  if (!style) return { fontFamily: APP_FONT_FAMILY }
+  if (Array.isArray(style)) return [{ fontFamily: APP_FONT_FAMILY }, ...style]
+  return [{ fontFamily: APP_FONT_FAMILY }, style]
+}
+
+function applyGlobalFontDefaults(): void {
+  if (globalFontApplied) return
+  globalFontApplied = true
+
+  const TextAny = Text as unknown as { defaultProps?: { style?: unknown } }
+  const TextInputAny = TextInput as unknown as { defaultProps?: { style?: unknown } }
+
+  TextAny.defaultProps = {
+    ...(TextAny.defaultProps ?? {}),
+    style: withDefaultFontStyle(TextAny.defaultProps?.style),
+  }
+  TextInputAny.defaultProps = {
+    ...(TextInputAny.defaultProps ?? {}),
+    style: withDefaultFontStyle(TextInputAny.defaultProps?.style),
+  }
+}
 
 SplashScreen.preventAutoHideAsync()
 
 export default function RootLayout() {
-  // Use this hook to track the locations for analytics or debugging.
-  // Delete if you don't need it.
-  useTrackLocations((pathname, params) => {
-    console.log(`Track ${pathname}`, { params })
-  })
   const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    DarkerGrotesque_400Regular,
+    DarkerGrotesque_500Medium,
+    DarkerGrotesque_700Bold,
   })
 
+  useEffect(() => {
+    if (loaded) applyGlobalFontDefaults()
+  }, [loaded])
+
   const onLayoutRootView = useCallback(async () => {
-    console.log('onLayoutRootView')
     if (loaded) {
-      console.log('loaded')
-      // This tells the splash screen to hide immediately! If we call this after
-      // `setAppIsReady`, then we may see a blank screen while the app is
-      // loading its initial state and rendering its first pixels. So instead,
-      // we hide the splash screen once we know the root view has already
-      // performed layout.
       await SplashScreen.hideAsync()
     }
   }, [loaded])

@@ -149,7 +149,8 @@ const NONCE_TTL_MS = 10 * 60 * 1000;
 function canonicalizeIntegrityPayload(payload) {
   return JSON.stringify({
     hashHex: payload.hashHex,
-    location: payload.location,
+    h3Cell: payload.h3Cell,
+    h3Resolution: payload.h3Resolution,
     timestampSec: payload.timestampSec,
     wallet: payload.wallet,
     nonce: payload.nonce,
@@ -163,12 +164,18 @@ function getHashFromKey(key) {
   return file.split('.')[0]?.toLowerCase() || '';
 }
 
-function validateLocation(locationString) {
-  const [latRaw, lonRaw] = String(locationString).split(',');
-  const lat = Number(latRaw);
-  const lon = Number(lonRaw);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Invalid integrity location');
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('Integrity location out of range');
+function parseAndValidateH3Cell(cell) {
+  const normalized = String(cell || '').trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{1,16}$/.test(normalized)) throw new Error('Invalid integrity h3Cell');
+  const value = BigInt(`0x${normalized}`);
+  if (value <= 0n || value > ((1n << 64n) - 1n)) throw new Error('h3Cell out of range');
+  return normalized;
+}
+
+function parseOptionalResolution(value) {
+  if (value === undefined || value === null || value === '') return;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > 15) throw new Error('h3Resolution out of range');
 }
 
 async function rpcRequest(method, params = []) {
@@ -264,7 +271,8 @@ const server = http.createServer(async (req, res) => {
         const expectedHash = getHashFromKey(key);
         const payloadHash = String(payload.hashHex || '').toLowerCase();
         if (!expectedHash || expectedHash !== payloadHash) throw new Error('Integrity hash does not match key hash');
-        validateLocation(payload.location);
+        parseAndValidateH3Cell(payload.h3Cell);
+        parseOptionalResolution(payload.h3Resolution);
         await validateChainAnchor(payload);
         if (!payload.wallet || !payload.nonce) throw new Error('Missing wallet/nonce in integrity payload');
         ensureFreshNonce(String(payload.nonce));

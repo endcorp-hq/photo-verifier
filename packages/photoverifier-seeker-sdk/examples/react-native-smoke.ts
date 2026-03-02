@@ -13,8 +13,8 @@ async function smoke(signMessage: (msg: Uint8Array) => Promise<Uint8Array>) {
   const nonce = createNonceU64();
   const payload = buildIntegrityPayload({
     hashHex: 'ab'.repeat(32),
-    latitudeE6: 37774900,
-    longitudeE6: -122419400,
+    h3Cell: '8928308280fffff',
+    h3Resolution: 9,
     timestampSec: Math.floor(Date.now() / 1000),
     wallet: '11111111111111111111111111111111',
     nonce: nonceToString(nonce),
@@ -37,8 +37,7 @@ async function smoke(signMessage: (msg: Uint8Array) => Promise<Uint8Array>) {
     hash32: new Uint8Array(32),
     nonce,
     timestampSec: payload.timestampSec,
-    latitudeE6: payload.latitudeE6,
-    longitudeE6: payload.longitudeE6,
+    h3CellU64: BigInt(`0x${payload.h3Cell}`),
     attestationSignature64: new Uint8Array(64),
   });
 

@@ -125,9 +125,8 @@ Resources:
           function canonicalizeIntegrityPayload(payload) {
             return JSON.stringify({
               hashHex: payload.hashHex,
-              location: payload.location,
-              latitudeE6: payload.latitudeE6,
-              longitudeE6: payload.longitudeE6,
+              h3Cell: payload.h3Cell,
+              h3Resolution: payload.h3Resolution,
               timestampSec: payload.timestampSec,
               wallet: payload.wallet,
               nonce: payload.nonce,
@@ -141,18 +140,25 @@ Resources:
             return (file.split('.')[0] || '').toLowerCase();
           }
 
-          function validateLocation(location) {
-            const [latRaw, lonRaw] = String(location).split(',');
-            const lat = Number(latRaw);
-            const lon = Number(lonRaw);
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Invalid integrity location');
-            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('Integrity location out of range');
+          function parseAndValidateH3Cell(cell) {
+            const normalized = String(cell || '').trim().toLowerCase().replace(/^0x/, '');
+            if (!/^[0-9a-f]{1,16}$/.test(normalized)) throw new Error('Invalid integrity h3Cell');
+            const value = BigInt(`0x${normalized}`);
+            if (value <= 0n || value > U64_MAX) throw new Error('h3Cell out of range for u64');
+            return { normalized, value };
           }
 
           function parseIntField(name, value) {
             const asNumber = Number(value);
             if (!Number.isInteger(asNumber)) throw new Error(`Invalid ${name}`);
             return asNumber;
+          }
+
+          function parseOptionalResolution(value) {
+            if (value === undefined || value === null || value === '') return undefined;
+            const resolution = parseIntField('h3Resolution', value);
+            if (resolution < 0 || resolution > 15) throw new Error('h3Resolution out of range');
+            return resolution;
           }
 
           function parseNonceU64(value) {
@@ -340,12 +346,10 @@ Resources:
             const hash = Buffer.from(hashHex, 'hex');
             const nonce = parseNonceU64(payload.nonce);
             const timestampSec = parseIntField('timestampSec', payload.timestampSec);
-            const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
-            const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
-            if (latitudeE6 < -90_000_000 || latitudeE6 > 90_000_000) throw new Error('latitudeE6 out of range');
-            if (longitudeE6 < -180_000_000 || longitudeE6 > 180_000_000) throw new Error('longitudeE6 out of range');
+            const { value: h3CellU64 } = parseAndValidateH3Cell(payload.h3Cell);
+            parseOptionalResolution(payload.h3Resolution);
 
-            const out = Buffer.alloc(26 + 32 + 32 + 8 + 8 + 8 + 8);
+            const out = Buffer.alloc(26 + 32 + 32 + 8 + 8 + 8);
             let o = 0;
             Buffer.from('photo-proof-attestation-v1', 'utf8').copy(out, o);
             o += 26;
@@ -357,9 +361,7 @@ Resources:
             o += 8;
             out.writeBigInt64LE(BigInt(timestampSec), o);
             o += 8;
-            out.writeBigInt64LE(BigInt(latitudeE6), o);
-            o += 8;
-            out.writeBigInt64LE(BigInt(longitudeE6), o);
+            out.writeBigUInt64LE(h3CellU64, o);
             return out;
           }
 
@@ -396,16 +398,8 @@ Resources:
                 return response(400, { error: 'Missing wallet/nonce in integrity payload' });
               }
 
-              validateLocation(payload.location);
-              const [latRaw, lonRaw] = String(payload.location).split(',');
-              const latitudeE6 = parseIntField('latitudeE6', payload.latitudeE6);
-              const longitudeE6 = parseIntField('longitudeE6', payload.longitudeE6);
-              if (Math.round(Number(latRaw) * 1_000_000) !== latitudeE6) {
-                return response(400, { error: 'latitudeE6 does not match location' });
-              }
-              if (Math.round(Number(lonRaw) * 1_000_000) !== longitudeE6) {
-                return response(400, { error: 'longitudeE6 does not match location' });
-              }
+              parseAndValidateH3Cell(payload.h3Cell);
+              parseOptionalResolution(payload.h3Resolution);
               await validateChainAnchor(payload);
               ensureFreshNonce(String(payload.nonce));
               verifySignature(payload, integrity.signature);

@@ -19,7 +19,7 @@ const RECORD_PROOF_DISC = crypto
   .update('global:record_photo_proof')
   .digest()
   .subarray(0, 8);
-const RECORD_PROOF_MIN_LEN = 8 + 32 + 8 + 8 + 8 + 8;
+const RECORD_PROOF_MIN_LEN = 8 + 32 + 8 + 8 + 8;
 
 // Returns decoded record_photo_proof entries.
 export async function GET() {
@@ -35,7 +35,7 @@ export async function GET() {
 
     const entries: Array<{
       hashHex: string;
-      location: string;
+      h3Cell: string;
       payer: string;
       signature: string;
       url: string;
@@ -82,7 +82,7 @@ export async function GET() {
             const url = `https://solscan.io/tx/${signature}${cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`}`;
             entries.push({
               hashHex: decoded.hashHex,
-              location: decoded.location,
+              h3Cell: decoded.h3Cell,
               payer: ix.accounts?.[3] ?? '',
               signature,
               url,
@@ -137,7 +137,7 @@ export async function GET() {
 
         entries.push({
           hashHex: decoded.hashHex,
-          location: decoded.location,
+          h3Cell: decoded.h3Cell,
           payer,
           signature: sig,
           url,
@@ -167,7 +167,7 @@ function decodeIxData(data: string | undefined): Buffer | null {
 
 function decodeRecordProof(
   raw: Buffer | null
-): { hashHex: string; nonce: string; location: string; timestampSec: number } | null {
+): { hashHex: string; nonce: string; h3Cell: string; timestampSec: number } | null {
   if (!raw || raw.length < RECORD_PROOF_MIN_LEN) return null;
   if (!raw.subarray(0, 8).equals(RECORD_PROOF_DISC)) return null;
 
@@ -178,14 +178,12 @@ function decodeRecordProof(
   o += 8;
   const timestampSec = Number(raw.readBigInt64LE(o));
   o += 8;
-  const latitudeE6 = Number(raw.readBigInt64LE(o));
-  o += 8;
-  const longitudeE6 = Number(raw.readBigInt64LE(o));
+  const h3Cell = raw.readBigUInt64LE(o).toString(16);
 
   return {
     hashHex: Buffer.from(hash).toString('hex'),
     nonce,
-    location: `${latitudeE6 / 1_000_000},${longitudeE6 / 1_000_000}`,
+    h3Cell,
     timestampSec: Number.isFinite(timestampSec) ? timestampSec : 0,
   };
 }

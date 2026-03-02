@@ -28,11 +28,11 @@ const RECORD_PROOF_DISC = createHash('sha256')
   .update('global:record_photo_proof')
   .digest()
   .subarray(0, 8);
-const RECORD_PROOF_MIN_LEN = 8 + 32 + 8 + 8 + 8 + 8;
+const RECORD_PROOF_MIN_LEN = 8 + 32 + 8 + 8 + 8;
 
 type TxEntry = {
   hashHex: string;
-  location: string;
+  h3Cell: string;
   payer: string;
   signature: string;
   url: string;
@@ -144,7 +144,7 @@ export async function GET(request: Request) {
             (Number.isFinite(Number(sidecar?.payload?.timestampSec))
               ? new Date(Number(sidecar.payload.timestampSec) * 1000).toISOString()
               : sidecar?.payload?.timestamp ?? null),
-          location: match?.location ?? sidecar?.payload?.location ?? null,
+          h3Cell: match?.h3Cell ?? sidecar?.payload?.h3Cell ?? null,
           owner: match?.payer ?? payloadWallet,
           signature: match?.signature ?? null,
           nonce: match?.nonce ?? sidecar?.payload?.nonce ?? null,
@@ -254,7 +254,7 @@ async function loadTxEntriesViaHelius(): Promise<TxEntry[]> {
         }`;
         out.push({
           hashHex: decoded.hashHex,
-          location: decoded.location,
+          h3Cell: decoded.h3Cell,
           nonce: decoded.nonce,
           timestamp,
           payer,
@@ -332,7 +332,7 @@ async function loadTxEntriesViaRpc(): Promise<TxEntry[]> {
       }`;
       out.push({
         hashHex: decoded.hashHex,
-        location: decoded.location,
+        h3Cell: decoded.h3Cell,
         nonce: decoded.nonce,
         payer,
         signature,
@@ -359,7 +359,7 @@ function decodeIxData(data: string | undefined): Buffer | null {
 
 function decodeRecordProof(
   raw: Buffer | null
-): { hashHex: string; nonce: string; location: string; timestampSec: number } | null {
+): { hashHex: string; nonce: string; h3Cell: string; timestampSec: number } | null {
   if (!raw || raw.length < RECORD_PROOF_MIN_LEN) return null;
   if (!raw.subarray(0, 8).equals(RECORD_PROOF_DISC)) return null;
 
@@ -370,14 +370,12 @@ function decodeRecordProof(
   o += 8;
   const timestampSec = Number(raw.readBigInt64LE(o));
   o += 8;
-  const latitudeE6 = Number(raw.readBigInt64LE(o));
-  o += 8;
-  const longitudeE6 = Number(raw.readBigInt64LE(o));
+  const h3Cell = raw.readBigUInt64LE(o).toString(16);
 
   return {
     hashHex: Buffer.from(hash).toString('hex'),
     nonce,
-    location: `${latitudeE6 / 1_000_000},${longitudeE6 / 1_000_000}`,
+    h3Cell,
     timestampSec: Number.isFinite(timestampSec) ? timestampSec : 0,
   };
 }

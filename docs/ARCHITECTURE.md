@@ -2,11 +2,11 @@
 
 ## Purpose
 
-The system proves that a photo hash was submitted by a wallet holder, tied to a verified chain timestamp/location payload, and appended on Solana via compressed accounts.
+The system proves that a photo hash was submitted by a wallet holder, tied to a verified chain timestamp/H3 payload, and appended on Solana via compressed accounts.
 
 ## Components
 
-- `photo-verifier` (Expo app): captures image bytes, location, chain anchor, wallet signature, and submits flow.
+- `photo-verifier` (Expo app): captures image bytes, derives H3 cell from device location, anchors to chain time, signs payload, and submits flow.
 - `@photoverifier/sdk`: hash/storage helpers, seeker checks, transaction builders, presign response parser.
 - `presign API` (AWS Lambda + API Gateway): verifies integrity envelope, validates chain anchor freshness, signs attestation, returns presigned S3 PUT URL.
 - `S3` bucket: stores uploaded image bytes by deterministic key (`photos/<seekerMint>/<hash>.jpg`).
@@ -46,7 +46,7 @@ sequenceDiagram
     Wallet-->>App: detached Ed25519 signature
     App->>API: POST /uploads {key, integrity envelope}
     API->>RPC: isBlockhashValid + getBlock(slot)
-    API-->>API: verify wallet sig + nonce freshness + location fields
+    API-->>API: verify wallet sig + nonce freshness + H3 fields
     API-->>App: {uploadURL, key, attestationSignature, attestationPublicKey}
 ```
 
@@ -97,8 +97,7 @@ sequenceDiagram
 - `hash[32]`
 - `nonce(u64)`
 - `timestamp(i64)`
-- `latitude(i64 e6)`
-- `longitude(i64 e6)`
+- `h3_index(u64)`
 - `attestation_signature[64]`
 
 Program verifies an `ed25519` instruction immediately before program instruction, requiring:
@@ -106,7 +105,7 @@ Program verifies an `ed25519` instruction immediately before program instruction
 - signer pubkey == attestation authority
 - signature bytes == args.attestation signature
 - signed message prefix == `photo-proof-attestation-v1`
-- message fields match owner/hash/nonce/timestamp/lat/lon
+- message fields match owner/hash/nonce/timestamp/h3_index
 
 ## Rotation Notes
 

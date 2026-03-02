@@ -19,6 +19,8 @@ import { ellipsify } from '@/utils/ellipsify'
 import { AppConfig } from '@/constants/app-config'
 
 const identity: AppIdentity = { name: AppConfig.name, uri: AppConfig.uri }
+const AUTHORIZATION_STORAGE_KEY_PREFIX = 'authorization-cache'
+const LEGACY_AUTHORIZATION_STORAGE_KEY = 'authorization-cache'
 
 export type Account = Readonly<{
   address: Base64EncodedAddress
@@ -33,6 +35,14 @@ type WalletAuthorization = Readonly<{
   authToken: AuthToken
   selectedAccount: Account
 }>
+
+function getStorageKeyForChain(chainId: string): string {
+  return `${AUTHORIZATION_STORAGE_KEY_PREFIX}:${chainId}`
+}
+
+function getQueryKeyForChain(chainId: string): readonly [string, string] {
+  return ['wallet-authorization', chainId]
+}
 
 function getAccountFromAuthorizedAccount(account: AuthorizedAccount): Account {
   const publicKey = getPublicKeyFromAddress(account.address)
@@ -52,9 +62,7 @@ function getAuthorizationFromAuthorizationResult(
 ): WalletAuthorization {
   let selectedAccount: Account
   if (
-    // We have yet to select an account.
     previouslySelectedAccount == null ||
-    // The previously selected account is no longer in the set of authorized addresses.
     !authorizationResult.accounts.some(({ address }) => address === previouslySelectedAccount.address)
   ) {
     const firstAccount = authorizationResult.accounts[0]
@@ -76,21 +84,30 @@ function getPublicKeyFromAddress(address: Base64EncodedAddress): PublicKey {
 
 function cacheReviver(key: string, value: any) {
   if (key === 'publicKey') {
-    return new PublicKey(value as PublicKeyInitData) // the PublicKeyInitData should match the actual data structure stored in AsyncStorage
+    return new PublicKey(value as PublicKeyInitData)
   } else {
     return value
   }
 }
 
-const AUTHORIZATION_STORAGE_KEY = 'authorization-cache'
+async function parseAuthorization(value: string | null): Promise<WalletAuthorization | null> {
+  if (!value) return null
+  try {
+    return JSON.parse(value, cacheReviver)
+  } catch {
+    return null
+  }
+}
 
-const queryKey = ['wallet-authorization']
-
-function usePersistAuthorization() {
+function usePersistAuthorization(storageKey: string, queryKey: readonly [string, string]) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (auth: WalletAuthorization | null): Promise<void> => {
-      await AsyncStorage.setItem(AUTHORIZATION_STORAGE_KEY, JSON.stringify(auth))
+      if (auth == null) {
+        await AsyncStorage.removeItem(storageKey)
+      } else {
+        await AsyncStorage.setItem(storageKey, JSON.stringify(auth))
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey })
@@ -98,28 +115,39 @@ function usePersistAuthorization() {
   })
 }
 
-function useFetchAuthorization() {
+function useFetchAuthorization(storageKey: string, queryKey: readonly [string, string]) {
   return useQuery({
     queryKey,
     queryFn: async (): Promise<WalletAuthorization | null> => {
-      const cacheFetchResult = await AsyncStorage.getItem(AUTHORIZATION_STORAGE_KEY)
+      const cacheFetchResult = await AsyncStorage.getItem(storageKey)
+      const parsed = await parseAuthorization(cacheFetchResult)
+      if (parsed) return parsed
 
-      // Return prior authorization, if found.
-      return cacheFetchResult ? JSON.parse(cacheFetchResult, cacheReviver) : null
+      // One-time migration from the legacy single-key cache.
+      const legacy = await AsyncStorage.getItem(LEGACY_AUTHORIZATION_STORAGE_KEY)
+      const legacyParsed = await parseAuthorization(legacy)
+      if (legacyParsed) {
+        await AsyncStorage.setItem(storageKey, JSON.stringify(legacyParsed))
+        await AsyncStorage.removeItem(LEGACY_AUTHORIZATION_STORAGE_KEY)
+      }
+      return legacyParsed
     },
   })
 }
 
-function useInvalidateAuthorizations() {
+function useInvalidateAuthorizations(queryKey: readonly [string, string]) {
   const client = useQueryClient()
   return () => client.invalidateQueries({ queryKey })
 }
 
 export function useAuthorization() {
   const { selectedCluster } = useCluster()
-  const fetchQuery = useFetchAuthorization()
-  const invalidateAuthorizations = useInvalidateAuthorizations()
-  const persistMutation = usePersistAuthorization()
+  const storageKey = useMemo(() => getStorageKeyForChain(selectedCluster.id), [selectedCluster.id])
+  const queryKey = useMemo(() => getQueryKeyForChain(selectedCluster.id), [selectedCluster.id])
+
+  const fetchQuery = useFetchAuthorization(storageKey, queryKey)
+  const invalidateAuthorizations = useInvalidateAuthorizations(queryKey)
+  const persistMutation = usePersistAuthorization(storageKey, queryKey)
 
   const handleAuthorizationResult = useCallback(
     async (authorizationResult: AuthorizationResult): Promise<WalletAuthorization> => {
@@ -135,27 +163,55 @@ export function useAuthorization() {
 
   const authorizeSession = useCallback(
     async (wallet: AuthorizeAPI) => {
-      const authorizationResult = await wallet.authorize({
-        identity,
-        chain: selectedCluster.id,
-        auth_token: fetchQuery.data?.authToken,
-      })
-      return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      const cachedAuthToken = fetchQuery.data?.authToken
+
+      try {
+        const authorizationResult = await wallet.authorize({
+          identity,
+          chain: selectedCluster.id as any,
+          auth_token: cachedAuthToken,
+        })
+        return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      } catch (error) {
+        if (!cachedAuthToken) throw error
+
+        // Retry once without stale token.
+        await persistMutation.mutateAsync(null)
+        const authorizationResult = await wallet.authorize({
+          identity,
+          chain: selectedCluster.id as any,
+        })
+        return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      }
     },
-    [fetchQuery.data?.authToken, handleAuthorizationResult, selectedCluster.id],
+    [fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation, selectedCluster.id],
   )
 
   const authorizeSessionWithSignIn = useCallback(
     async (wallet: AuthorizeAPI, signInPayload: SignInPayload) => {
-      const authorizationResult = await wallet.authorize({
-        identity,
-        chain: selectedCluster.id,
-        auth_token: fetchQuery.data?.authToken,
-        sign_in_payload: signInPayload,
-      })
-      return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      const cachedAuthToken = fetchQuery.data?.authToken
+
+      try {
+        const authorizationResult = await wallet.authorize({
+          identity,
+          chain: selectedCluster.id as any,
+          auth_token: cachedAuthToken,
+          sign_in_payload: signInPayload,
+        })
+        return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      } catch (error) {
+        if (!cachedAuthToken) throw error
+
+        await persistMutation.mutateAsync(null)
+        const authorizationResult = await wallet.authorize({
+          identity,
+          chain: selectedCluster.id as any,
+          sign_in_payload: signInPayload,
+        })
+        return (await handleAuthorizationResult(authorizationResult)).selectedAccount
+      }
     },
-    [fetchQuery.data?.authToken, handleAuthorizationResult, selectedCluster.id],
+    [fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation, selectedCluster.id],
   )
 
   const deauthorizeSession = useCallback(
@@ -171,6 +227,15 @@ export function useAuthorization() {
 
   const deauthorizeSessions = useCallback(async () => {
     await invalidateAuthorizations()
+
+    const keys = await AsyncStorage.getAllKeys()
+    const authKeys = keys.filter(
+      key => key === LEGACY_AUTHORIZATION_STORAGE_KEY || key.startsWith(`${AUTHORIZATION_STORAGE_KEY_PREFIX}:`),
+    )
+    if (authKeys.length > 0) {
+      await AsyncStorage.multiRemove(authKeys)
+    }
+
     await persistMutation.mutateAsync(null)
   }, [invalidateAuthorizations, persistMutation])
 

@@ -20,10 +20,9 @@ function buildAttestationMessage(params: {
   hash: Uint8Array;
   nonce: number;
   timestamp: number;
-  latitude: number;
-  longitude: number;
+  h3Index: bigint;
 }) {
-  const out = Buffer.alloc(ATTESTATION_PREFIX.length + 32 + 32 + 8 + 8 + 8 + 8);
+  const out = Buffer.alloc(ATTESTATION_PREFIX.length + 32 + 32 + 8 + 8 + 8);
   let o = 0;
   ATTESTATION_PREFIX.copy(out, o);
   o += ATTESTATION_PREFIX.length;
@@ -35,9 +34,7 @@ function buildAttestationMessage(params: {
   o += 8;
   out.writeBigInt64LE(BigInt(params.timestamp), o);
   o += 8;
-  out.writeBigInt64LE(BigInt(params.latitude), o);
-  o += 8;
-  out.writeBigInt64LE(BigInt(params.longitude), o);
+  out.writeBigUInt64LE(BigInt(params.h3Index), o);
   return out;
 }
 
@@ -126,8 +123,7 @@ describe("photo-proof-compressed", () => {
       hash: hash1,
       nonce: 1,
       timestamp: now,
-      latitude: 37_774_900,
-      longitude: -122_419_400,
+      h3Index: BigInt("0x8928308280fffff"),
     });
     const attestationSig1 = signMessageEd25519(ownerKeypair.secretKey, attestationMessage1);
     const attestationIx1 = web3.Ed25519Program.createInstructionWithPublicKey({
@@ -140,8 +136,7 @@ describe("photo-proof-compressed", () => {
         hash: Array.from(hash1) as any,
         nonce: new anchor.BN(1),
         timestamp: new anchor.BN(now),
-        latitude: new anchor.BN(37_774_900),
-        longitude: new anchor.BN(-122_419_400),
+        h3Index: new anchor.BN("617700169958293503"),
         attestationSignature: Array.from(attestationSig1) as any,
       })
       .preInstructions([attestationIx1])
@@ -164,8 +159,7 @@ describe("photo-proof-compressed", () => {
       hash: hash2,
       nonce: 2,
       timestamp: now + 1,
-      latitude: 37_775_000,
-      longitude: -122_419_300,
+      h3Index: BigInt("0x8928308280bffff"),
     });
     const attestationSig2 = signMessageEd25519(ownerKeypair.secretKey, attestationMessage2);
     const attestationIx2 = web3.Ed25519Program.createInstructionWithPublicKey({
@@ -178,8 +172,7 @@ describe("photo-proof-compressed", () => {
         hash: Array.from(hash2) as any,
         nonce: new anchor.BN(2),
         timestamp: new anchor.BN(now + 1),
-        latitude: new anchor.BN(37_775_000),
-        longitude: new anchor.BN(-122_419_300),
+        h3Index: new anchor.BN("617700169958031359"),
         attestationSignature: Array.from(attestationSig2) as any,
       })
       .preInstructions([attestationIx2])

@@ -33,6 +33,18 @@ export class AppConfig {
       ((Constants as any)?.expoConfig?.extra?.rpc?.url ?? (Constants as any)?.manifest?.extra?.rpc?.url) ||
       'https://api.mainnet-beta.solana.com',
   }
+  static h3 = {
+    resolution: (() => {
+      const raw = Number(
+        process.env.EXPO_PUBLIC_H3_RESOLUTION ||
+          ((Constants as any)?.expoConfig?.extra?.h3?.resolution ??
+            (Constants as any)?.manifest?.extra?.h3?.resolution) ||
+          7,
+      )
+      if (!Number.isInteger(raw) || raw < 0 || raw > 15) return 7
+      return raw
+    })(),
+  }
   private static parseCsv(value: any): string[] {
     if (!value) return []
     if (Array.isArray(value)) return value.filter(Boolean)

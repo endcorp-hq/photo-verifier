@@ -15,6 +15,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { blake3 } from '@noble/hashes/blake3';
 import { bytesToHex } from '@noble/hashes/utils';
 import { buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, S3Config } from './storage';
+import { h3CellToU64 } from './h3';
 
 export const PHOTO_PROOF_COMPRESSED_PROGRAM_ID = new PublicKey(
   '3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu'
@@ -56,19 +57,6 @@ function unixSeconds(input: string | number): number {
   return Math.trunc(parsed / 1000);
 }
 
-function locationToFixedE6(location: string): { latitudeE6: number; longitudeE6: number } {
-  const [latRaw, lonRaw] = String(location).split(',');
-  const lat = Number(latRaw);
-  const lon = Number(lonRaw);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new Error(`Invalid location string: ${location}`);
-  }
-  return {
-    latitudeE6: Math.round(lat * 1_000_000),
-    longitudeE6: Math.round(lon * 1_000_000),
-  };
-}
-
 export function deriveTreeConfigPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('tree_config')], PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
 }
@@ -85,8 +73,7 @@ type RecordArgs = {
   hash32: Uint8Array;
   nonce: number | bigint;
   timestampSec: number | bigint;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3CellU64: number | bigint;
   attestationSignature64: Uint8Array;
 };
 
@@ -95,7 +82,7 @@ function encodeRecordPhotoProofArgs(args: RecordArgs): Uint8Array {
   if (args.attestationSignature64.length !== 64) {
     throw new Error('attestationSignature64 must be 64 bytes');
   }
-  const totalLen = 8 + 32 + 8 + 8 + 8 + 8 + 64;
+  const totalLen = 8 + 32 + 8 + 8 + 8 + 64;
   const out = new Uint8Array(totalLen);
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   let o = 0;
@@ -105,8 +92,7 @@ function encodeRecordPhotoProofArgs(args: RecordArgs): Uint8Array {
   o += 32;
   o = putU64LE(view, o, BigInt(args.nonce));
   o = putI64LE(view, o, BigInt(args.timestampSec));
-  o = putI64LE(view, o, BigInt(args.latitudeE6));
-  o = putI64LE(view, o, BigInt(args.longitudeE6));
+  o = putU64LE(view, o, h3CellToU64(args.h3CellU64));
   out.set(args.attestationSignature64, o);
   return out;
 }
@@ -116,12 +102,11 @@ export function buildAttestationMessage(params: {
   hash32: Uint8Array;
   nonce: number | bigint;
   timestampSec: number | bigint;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3CellU64: number | bigint;
 }): Uint8Array {
   if (params.hash32.length !== 32) throw new Error('hash32 must be 32 bytes');
 
-  const out = new Uint8Array(ATTESTATION_PREFIX.length + 32 + 32 + 8 + 8 + 8 + 8);
+  const out = new Uint8Array(ATTESTATION_PREFIX.length + 32 + 32 + 8 + 8 + 8);
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   let o = 0;
   out.set(ATTESTATION_PREFIX, o);
@@ -132,8 +117,7 @@ export function buildAttestationMessage(params: {
   o += 32;
   o = putU64LE(view, o, BigInt(params.nonce));
   o = putI64LE(view, o, BigInt(params.timestampSec));
-  o = putI64LE(view, o, BigInt(params.latitudeE6));
-  putI64LE(view, o, BigInt(params.longitudeE6));
+  putU64LE(view, o, h3CellToU64(params.h3CellU64));
   return out;
 }
 
@@ -183,8 +167,7 @@ export function buildRecordPhotoProofInstruction(params: {
   hash32: Uint8Array;
   nonce: number | bigint;
   timestampSec: number | bigint;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3CellU64: number | bigint;
   attestationSignature64: Uint8Array;
   feeRecipient?: PublicKey;
   treeConfigPda?: PublicKey;
@@ -206,8 +189,7 @@ export function buildRecordPhotoProofInstruction(params: {
     hash32: params.hash32,
     nonce: params.nonce,
     timestampSec: params.timestampSec,
-    latitudeE6: params.latitudeE6,
-    longitudeE6: params.longitudeE6,
+    h3CellU64: params.h3CellU64,
     attestationSignature64: params.attestationSignature64,
   });
   const keys = [
@@ -239,8 +221,7 @@ export async function buildRecordPhotoProofTransaction(params: {
   hash32: Uint8Array;
   nonce: number | bigint;
   timestampSec: number | bigint;
-  latitudeE6: number;
-  longitudeE6: number;
+  h3CellU64: number | bigint;
   attestationSignature64: Uint8Array;
   feeRecipient?: PublicKey;
 }): Promise<{
@@ -291,8 +272,7 @@ export async function buildRecordPhotoProofTransaction(params: {
     hash32: params.hash32,
     nonce: params.nonce,
     timestampSec: params.timestampSec,
-    latitudeE6: params.latitudeE6,
-    longitudeE6: params.longitudeE6,
+    h3CellU64: params.h3CellU64,
     attestationSignature64: params.attestationSignature64,
     feeRecipient: params.feeRecipient,
     treeConfigPda,
@@ -304,8 +284,7 @@ export async function buildRecordPhotoProofTransaction(params: {
     hash32: params.hash32,
     nonce: params.nonce,
     timestampSec: params.timestampSec,
-    latitudeE6: params.latitudeE6,
-    longitudeE6: params.longitudeE6,
+    h3CellU64: params.h3CellU64,
   });
   const attestationIx = Ed25519Program.createInstructionWithPublicKey({
     publicKey: PHOTO_PROOF_ATTESTATION_AUTHORITY.toBytes(),
@@ -361,7 +340,7 @@ export async function uploadAndSubmit(params: {
   seekerMint: string;
   basePrefix?: string;
   photoBytes: Uint8Array;
-  locationString: string;
+  h3Cell: string;
   contentType?: string;
   timestamp: string | number;
   nonce: number | bigint;
@@ -392,15 +371,13 @@ export async function uploadAndSubmit(params: {
     contentType: params.contentType || 'image/jpeg',
   });
 
-  const { latitudeE6, longitudeE6 } = locationToFixedE6(params.locationString);
   const { transaction } = await buildRecordPhotoProofTransaction({
     connection: params.connection,
     owner: params.owner,
     hash32,
     nonce: params.nonce,
     timestampSec: unixSeconds(params.timestamp),
-    latitudeE6,
-    longitudeE6,
+    h3CellU64: h3CellToU64(params.h3Cell),
     attestationSignature64: params.attestationSignature64,
   });
 

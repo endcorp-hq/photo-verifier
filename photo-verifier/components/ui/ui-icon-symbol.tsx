@@ -15,6 +15,7 @@ export type UiIconSymbolName = keyof typeof MAPPING
 const MAPPING = {
   'camera.fill': 'camera-alt',
   'gearshape.fill': 'settings',
+  'info.circle.fill': 'info',
   'photo.on.rectangle.angled': 'photo-library',
   'wallet.pass.fill': 'wallet',
   'ladybug.fill': 'bug-report',
