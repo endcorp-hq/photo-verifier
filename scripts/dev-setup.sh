@@ -256,17 +256,17 @@ deploy_program() {
     solana airdrop 2
   fi
 
-  # Build and deploy the program
-  cd on-chain/photo-verifier
+  # Build and deploy the compressed program
+  cd on-chain/photo-proof-compressed
   anchor build
   anchor deploy
   cd ../..
 
   # Get the program ID
-  PROGRAM_ID=$(solana program show "$(ls -t on-chain/photo-verifier/target/deploy/*.so | head -1 | sed 's/.*-//; s/.so//')" | awk '/Program Id:/ {print $3}')
+  PROGRAM_ID=$(solana address -k on-chain/photo-proof-compressed/target/deploy/photo_proof_compressed-keypair.json)
 
   log_success "Program deployed: $PROGRAM_ID"
-  log_info "Update PHOTO_VERIFIER_PROGRAM_ID in your config"
+  log_info "Update PHOTOVERIFIER_PROGRAM_ID in your config"
 }
 
 # =============================================================================
@@ -325,7 +325,7 @@ main() {
   echo "Next steps:"
   echo "  1. Run the mobile app:     cd photo-verifier && pnpm dev"
   echo "  2. Run the demo site:      cd demo-site && pnpm dev"
-  echo "  3. Run tests:              cd on-chain/photo-verifier && anchor test"
+  echo "  3. Run tests:              cd on-chain/photo-proof-compressed && anchor test"
   echo ""
   echo "Environment variables to set:"
   echo "  export PHOTOVERIFIER_S3_PRESIGN_URL=<from S3 setup>"

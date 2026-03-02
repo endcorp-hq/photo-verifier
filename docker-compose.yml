@@ -51,9 +51,9 @@ services:
       solana-test-validator
       --reset
       --mintable
-      --bpf-program J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt target/deploy/photo_verifier.so
+      --bpf-program 8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz target/deploy/photo_proof_compressed.so
     volumes:
-      - ./on-chain/photo-verifier/target/deploy:/app/deploy
+      - ./on-chain/photo-proof-compressed/target/deploy:/app/deploy
       - solana_data:/root/.solana
     depends_on:
       - localstack
