@@ -1,0 +1,35 @@
+{
+  "name": "@photoverifier/seeker-sdk",
+  "version": "0.1.0",
+  "description": "Seeker-first React Native SDK surface for photo verification and attested upload flows",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "sideEffects": false,
+  "react-native": "src/index.ts",
+  "files": [
+    "dist",
+    "src",
+    "examples"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rimraf dist",
+    "smoke:types": "tsc -p tsconfig.smoke.json --noEmit"
+  },
+  "peerDependencies": {
+    "@solana/spl-token": "*",
+    "@solana/web3.js": "*",
+    "expo": ">=51",
+    "expo-camera": "*",
+    "expo-file-system": "~18.1.11",
+    "expo-location": "*",
+    "expo-media-library": "*",
+    "react": ">=18",
+    "react-native": ">=0.74"
+  },
+  "dependencies": {
+    "@photoverifier/sdk": "workspace:*",
+    "js-base64": "^3.7.8"
+  }
+}

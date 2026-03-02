@@ -41,10 +41,16 @@ This SDK enables:
 
 ## Quick Start
 
-### Install SDK
+### Install Base SDK
 
 ```bash
 npm install @photoverifier/sdk
+```
+
+### Install Seeker SDK (React Native focused)
+
+```bash
+npm install @photoverifier/seeker-sdk
 ```
 
 ### Peer Dependencies
@@ -75,6 +81,8 @@ const { signature } = await verifier.storeProof(data);
 
 - [API Reference](./docs/API.md) — Full SDK API documentation
 - [Licensing](./docs/LICENSING.md) — License tiers, pricing, and terms
+- [SDK Packaging Strategy](./docs/SDK_PACKAGING_STRATEGY.md) — Base SDK vs Seeker SDK split
+- [SDK Migration Guide](./docs/SDK_MIGRATION.md) — Import migration and compatibility notes
 
 ## Packages
 
@@ -97,6 +105,14 @@ Licensed blockchain features:
 ### @photoverifier/sdk (MIT + Proprietary)
 
 Unified SDK combining both. Core features work without a license; blockchain features require a valid license key.
+
+### @photoverifier/seeker-sdk
+
+Seeker-first React Native package that re-exports the most common mobile flow surface and adds helpers for:
+
+- nonce generation (`createNonceU64`)
+- integrity payload canonicalization (`canonicalizeIntegrityPayload`)
+- integrity envelope creation (`createIntegrityEnvelope`)
 
 ## Prerequisites
 
