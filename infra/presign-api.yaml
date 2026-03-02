@@ -41,7 +41,7 @@ Resources:
   PresignFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Runtime: python3.11
+      Runtime: nodejs20.x
       Handler: index.handler
       Role: !GetAtt PresignFunctionRole.Arn
       Timeout: 10
@@ -50,53 +50,196 @@ Resources:
           BUCKET_NAME: !Ref BucketName
           URL_EXPIRY_SECONDS: !Ref UrlExpirySeconds
           ALLOWED_ORIGIN: !Ref AllowedOrigin
+          SOLANA_RPC_URL: https://api.devnet.solana.com
       Code:
         ZipFile: |
-          import json, os
-          import boto3
-          s3 = boto3.client('s3')
-          BUCKET = os.environ['BUCKET_NAME']
-          EXPIRES = int(os.environ.get('URL_EXPIRY_SECONDS', '300'))
-          ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
+          const AWS = require('aws-sdk');
+          const crypto = require('crypto');
+          const s3 = new AWS.S3();
 
-          def _response(status, body):
+          const BUCKET = process.env.BUCKET_NAME;
+          const EXPIRES = Number(process.env.URL_EXPIRY_SECONDS || 300);
+          const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+          const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+          const NONCE_TTL_MS = 10 * 60 * 1000;
+          const nonceCache = new Map();
+          const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+          function response(status, body) {
             return {
-              "statusCode": status,
-              "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Methods": "POST,OPTIONS"
+              statusCode: status,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
               },
-              "body": json.dumps(body)
+              body: JSON.stringify(body),
+            };
+          }
+
+          function decodeBase58(value) {
+            if (typeof value !== 'string' || value.length === 0) {
+              throw new Error('Invalid base58 value');
+            }
+            const bytes = [0];
+            for (const ch of value) {
+              const idx = BASE58_ALPHABET.indexOf(ch);
+              if (idx < 0) throw new Error('Invalid base58 character');
+              let carry = idx;
+              for (let i = 0; i < bytes.length; i++) {
+                const x = bytes[i] * 58 + carry;
+                bytes[i] = x & 0xff;
+                carry = x >> 8;
+              }
+              while (carry > 0) {
+                bytes.push(carry & 0xff);
+                carry >>= 8;
+              }
+            }
+            for (const ch of value) {
+              if (ch === '1') bytes.push(0);
+              else break;
+            }
+            bytes.reverse();
+            return Buffer.from(bytes);
+          }
+
+          function canonicalizeIntegrityPayload(payload) {
+            return JSON.stringify({
+              hashHex: payload.hashHex,
+              location: payload.location,
+              timestampSec: payload.timestampSec,
+              wallet: payload.wallet,
+              nonce: payload.nonce,
+              slot: payload.slot,
+              blockhash: payload.blockhash,
+            });
+          }
+
+          function hashFromKey(key) {
+            const file = String(key).split('/').pop() || '';
+            return (file.split('.')[0] || '').toLowerCase();
+          }
+
+          function validateLocation(location) {
+            const [latRaw, lonRaw] = String(location).split(',');
+            const lat = Number(latRaw);
+            const lon = Number(lonRaw);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Invalid integrity location');
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('Integrity location out of range');
+          }
+
+          async function rpcRequest(method, params) {
+            const res = await fetch(SOLANA_RPC_URL, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params || [] }),
+            });
+            if (!res.ok) throw new Error(`RPC ${method} failed with ${res.status}`);
+            const data = await res.json();
+            if (data?.error) throw new Error(`RPC ${method} error: ${JSON.stringify(data.error)}`);
+            return data.result;
+          }
+
+          async function validateChainAnchor(payload) {
+            const slot = Number(payload.slot);
+            if (!Number.isInteger(slot) || slot <= 0) throw new Error('Invalid integrity slot');
+            const blockhash = String(payload.blockhash || '');
+            if (!blockhash) throw new Error('Missing integrity blockhash');
+
+            const isValid = await rpcRequest('isBlockhashValid', [blockhash, { commitment: 'confirmed' }]);
+            if (!isValid?.value) throw new Error('Integrity blockhash is not valid on selected cluster');
+
+            const block = await rpcRequest('getBlock', [
+              slot,
+              {
+                commitment: 'confirmed',
+                transactionDetails: 'none',
+                rewards: false,
+                maxSupportedTransactionVersion: 0,
+              },
+            ]);
+            if (!block || block.blockhash !== blockhash) throw new Error('Integrity slot/blockhash mismatch');
+
+            const blockTimeSec = Number(block.blockTime);
+            if (!Number.isFinite(blockTimeSec)) throw new Error('Unable to resolve integrity block time');
+            const timestampSec = Number(payload.timestampSec);
+            if (!Number.isInteger(timestampSec) || timestampSec <= 0) throw new Error('Invalid integrity timestampSec');
+            if (Math.abs(blockTimeSec - timestampSec) > 120) throw new Error('Integrity timestamp does not match block time');
+            if (Math.abs(Date.now() - blockTimeSec * 1000) > 10 * 60 * 1000) {
+              throw new Error('Integrity block time outside 10 minute window');
+            }
+          }
+
+          function ensureFreshNonce(nonce) {
+            const now = Date.now();
+            for (const [k, seenAt] of nonceCache.entries()) {
+              if (now - seenAt > NONCE_TTL_MS) nonceCache.delete(k);
+            }
+            if (nonceCache.has(nonce)) throw new Error('Integrity nonce already used');
+            nonceCache.set(nonce, now);
+          }
+
+          function verifySignature(payload, signatureBase64) {
+            const pubkey = decodeBase58(String(payload.wallet));
+            if (pubkey.length !== 32) throw new Error('Invalid wallet public key');
+            const signature = Buffer.from(String(signatureBase64), 'base64');
+            const spkiPrefix = Buffer.from('302a300506032b6570032100', 'hex');
+            const spkiDer = Buffer.concat([spkiPrefix, pubkey]);
+            const message = Buffer.from(canonicalizeIntegrityPayload(payload), 'utf8');
+            const ok = crypto.verify(null, message, { key: spkiDer, format: 'der', type: 'spki' }, signature);
+            if (!ok) throw new Error('Integrity signature verification failed');
+          }
+
+          exports.handler = async (event) => {
+            const method = event?.requestContext?.http?.method;
+            if (method === 'OPTIONS') {
+              return response(200, { ok: true });
             }
 
-          def handler(event, context):
-            if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
-              return _response(200, {"ok": True})
-            try:
-              body = event.get('body') or '{}'
-              if event.get('isBase64Encoded'):
-                import base64
-                body = base64.b64decode(body)
-              data = json.loads(body)
-              key = data.get('key')
-              content_type = data.get('contentType', 'application/octet-stream')
-              if not key:
-                return _response(400, {"error": "Missing key"})
-              params = {
-                'Bucket': BUCKET,
-                'Key': key,
-                'ContentType': content_type
+            try {
+              const bodyString = event?.isBase64Encoded
+                ? Buffer.from(event.body || '', 'base64').toString('utf8')
+                : (event?.body || '{}');
+              const data = JSON.parse(bodyString);
+              const key = data?.key;
+              const contentType = data?.contentType || 'application/octet-stream';
+              const integrity = data?.integrity;
+
+              if (!key) return response(400, { error: 'Missing key' });
+              if (!integrity || integrity.version !== 'v1' || !integrity.payload || !integrity.signature) {
+                return response(400, { error: 'Missing integrity envelope' });
               }
-              url = s3.generate_presigned_url(
-                ClientMethod='put_object',
-                Params=params,
-                ExpiresIn=EXPIRES
-              )
-              return _response(200, {"uploadURL": url, "key": key})
-            except Exception as e:
-              return _response(500, {"error": str(e)})
+
+              const payload = integrity.payload;
+              const expectedHash = hashFromKey(key);
+              const payloadHash = String(payload.hashHex || '').toLowerCase();
+              if (!expectedHash || expectedHash !== payloadHash) {
+                return response(400, { error: 'Integrity hash does not match key hash' });
+              }
+
+              if (!payload.wallet || !payload.nonce) {
+                return response(400, { error: 'Missing wallet/nonce in integrity payload' });
+              }
+
+              validateLocation(payload.location);
+              await validateChainAnchor(payload);
+              ensureFreshNonce(String(payload.nonce));
+              verifySignature(payload, integrity.signature);
+
+              const uploadURL = s3.getSignedUrl('putObject', {
+                Bucket: BUCKET,
+                Key: key,
+                ContentType: contentType,
+                Expires: EXPIRES,
+              });
+
+              return response(200, { uploadURL, key, integrityAccepted: true });
+            } catch (err) {
+              return response(400, { error: String(err.message || err) });
+            }
+          };
 
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -143,5 +286,3 @@ Outputs:
   ApiEndpoint:
     Description: Base URL for the HTTP API
     Value: !GetAtt HttpApi.ApiEndpoint
-
-

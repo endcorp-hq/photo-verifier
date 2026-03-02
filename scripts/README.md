@@ -123,7 +123,7 @@ export PHOTOVERIFIER_S3_REGION=us-east-1
 
 ### 5. Build and Deploy Program
 ```bash
-cd on-chain/photo-verifier
+cd on-chain/photo-proof-compressed
 anchor build
 anchor deploy
 ```
@@ -160,4 +160,4 @@ docker logs localstack
 After setup:
 1. Run the mobile app: `cd photo-verifier && pnpm dev`
 2. Run the demo site: `cd demo-site && pnpm dev`
-3. Deploy the Solana program: `cd on-chain/photo-verifier && anchor deploy`
+3. Deploy the Solana program: `cd on-chain/photo-proof-compressed && anchor deploy`
