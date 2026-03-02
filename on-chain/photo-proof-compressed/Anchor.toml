@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-photo_proof_compressed = "8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz"
+photo_proof_compressed = "3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu"
 
 [registry]
 url = "https://api.apr.dev"
@@ -17,7 +17,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [programs.devnet]
-photo_proof_compressed = "8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz"
+photo_proof_compressed = "3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu"
 
 [scripts]
 test = "pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
