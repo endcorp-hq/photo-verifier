@@ -2,6 +2,10 @@
   "name": "photoverifier-monorepo",
   "private": true,
   "version": "0.1.0",
+  "scripts": {
+    "release:pack-check": "bash scripts/npm-pack-check.sh",
+    "release:dry-run": "bash scripts/npm-publish-dry-run.sh"
+  },
   "workspaces": [
     "photo-verifier",
     "packages/*"

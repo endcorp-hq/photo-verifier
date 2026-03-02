@@ -88,6 +88,7 @@ const { signature } = await verifier.storeProof(data);
 - [Licensing](./docs/LICENSING.md) — License tiers, pricing, and terms
 - [SDK Packaging Strategy](./docs/SDK_PACKAGING_STRATEGY.md) — Base SDK vs Seeker SDK split
 - [SDK Migration Guide](./docs/SDK_MIGRATION.md) — Import migration and compatibility notes
+- [NPM Release Workflow](./docs/NPM_RELEASE_WORKFLOW.md) — Version policy, pack checks, dry-run and publish steps
 
 ## Packages
 
