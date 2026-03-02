@@ -102,15 +102,28 @@ export {
   buildRecordPhotoProofTransaction,
   buildRecordPhotoProofInstruction,
   buildInitializeTreeInstruction,
-  derivePhotoProofPda,
+  deriveTreeConfigPda as deriveOnchainTreeConfigPda,
+  deriveTreeAuthorityPda,
   PHOTO_PROOF_COMPRESSED_PROGRAM_ID,
-  buildCreatePhotoDataTransaction,
-  derivePhotoDataPda,
-  buildCreatePhotoDataInstruction,
+  SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+  SPL_NOOP_PROGRAM_ID,
+  PHOTO_PROOF_FEE_AUTHORITY,
+  PHOTO_PROOF_ATTESTATION_AUTHORITY,
+  buildAttestationMessage,
   sendTransactionWithKeypair,
   confirmTransaction,
   uploadAndSubmit,
   hashBytes,
-  PHOTO_VERIFIER_PROGRAM_ID,
-
 } from './modules/onchain';
+
+// Presign helpers - robust response parsing and UX-friendly errors
+export {
+  requestAttestedPresignedPut,
+  parseAttestedPresignResponse,
+  decodeAttestationSignature64,
+  PresignError,
+  type PresignErrorCode,
+  type PresignIntegrityPayload,
+  type PresignIntegrityEnvelope,
+  type AttestedPresignResponse,
+} from './modules/presign';

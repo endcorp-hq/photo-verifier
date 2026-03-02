@@ -8,6 +8,8 @@ import {
   TransactionMessage,
   VersionedTransaction,
   ComputeBudgetProgram,
+  Ed25519Program,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
 import { sha256 } from '@noble/hashes/sha256';
 import { blake3 } from '@noble/hashes/blake3';
@@ -15,19 +17,26 @@ import { bytesToHex } from '@noble/hashes/utils';
 import { buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, S3Config } from './storage';
 
 export const PHOTO_PROOF_COMPRESSED_PROGRAM_ID = new PublicKey(
-  '8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz'
+  '3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu'
 );
-
-// Backward alias kept for callers that still import the old symbol name.
-export const PHOTO_VERIFIER_PROGRAM_ID = PHOTO_PROOF_COMPRESSED_PROGRAM_ID;
+export const SPL_ACCOUNT_COMPRESSION_PROGRAM_ID = new PublicKey(
+  'cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK'
+);
+export const SPL_NOOP_PROGRAM_ID = new PublicKey(
+  'noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV'
+);
+export const PHOTO_PROOF_FEE_AUTHORITY = new PublicKey(
+  'DTrsex7XGyS6QstUr4GFZ4cHYEm4YoeD75799A7ns7Sc'
+);
+export const PHOTO_PROOF_ATTESTATION_AUTHORITY = new PublicKey(
+  'Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk'
+);
+const MERKLE_TREE_ACCOUNT_SPACE = 31_800;
+const TREE_CONFIG_MIN_DATA_LEN = 8 + 1 + 32 + 1 + 32;
+const ATTESTATION_PREFIX = new TextEncoder().encode('photo-proof-attestation-v1');
 
 function instructionDiscriminator(name: string): Uint8Array {
   return sha256(new TextEncoder().encode(`global:${name}`)).slice(0, 8);
-}
-
-function putU32LE(view: DataView, offset: number, value: number): number {
-  view.setUint32(offset, value >>> 0, true);
-  return offset + 4;
 }
 
 function putI64LE(view: DataView, offset: number, value: bigint): number {
@@ -60,30 +69,16 @@ function locationToFixedE6(location: string): { latitudeE6: number; longitudeE6:
   };
 }
 
-export function deriveTreeConfigPda(authority: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('tree_config'), authority.toBuffer()],
-    PHOTO_PROOF_COMPRESSED_PROGRAM_ID
-  );
+export function deriveTreeConfigPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from('tree_config')], PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
 }
 
-export function derivePhotoProofPda(owner: PublicKey, hash32: Uint8Array): [PublicKey, number] {
-  if (hash32.length !== 32) throw new Error('hash32 must be 32 bytes');
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('photo'), owner.toBuffer(), Buffer.from(hash32)],
-    PHOTO_PROOF_COMPRESSED_PROGRAM_ID
-  );
+export function deriveTreeAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from('tree_authority')], PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
 }
 
-// Backward alias name.
-export const derivePhotoDataPda = derivePhotoProofPda;
-
-function encodeInitializeTreeArgs(maxCapacity: number | bigint): Uint8Array {
-  const out = new Uint8Array(8 + 8);
-  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
-  out.set(instructionDiscriminator('initialize_tree'), 0);
-  putU64LE(view, 8, BigInt(maxCapacity));
-  return out;
+function encodeInitializeTreeArgs(): Uint8Array {
+  return instructionDiscriminator('initialize_tree');
 }
 
 type RecordArgs = {
@@ -92,17 +87,15 @@ type RecordArgs = {
   timestampSec: number | bigint;
   latitudeE6: number;
   longitudeE6: number;
-  merkleRoot?: Uint8Array;
-  leafIndex?: number;
+  attestationSignature64: Uint8Array;
 };
 
 function encodeRecordPhotoProofArgs(args: RecordArgs): Uint8Array {
   if (args.hash32.length !== 32) throw new Error('hash32 must be 32 bytes');
-  const merkleRoot = args.merkleRoot ?? new Uint8Array(32);
-  if (merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
-  const leafIndex = args.leafIndex ?? 0;
-
-  const totalLen = 8 + 32 + 8 + 8 + 8 + 8 + 32 + 4;
+  if (args.attestationSignature64.length !== 64) {
+    throw new Error('attestationSignature64 must be 64 bytes');
+  }
+  const totalLen = 8 + 32 + 8 + 8 + 8 + 8 + 64;
   const out = new Uint8Array(totalLen);
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   let o = 0;
@@ -114,30 +107,74 @@ function encodeRecordPhotoProofArgs(args: RecordArgs): Uint8Array {
   o = putI64LE(view, o, BigInt(args.timestampSec));
   o = putI64LE(view, o, BigInt(args.latitudeE6));
   o = putI64LE(view, o, BigInt(args.longitudeE6));
-  out.set(merkleRoot, o);
-  o += 32;
-  putU32LE(view, o, leafIndex);
+  out.set(args.attestationSignature64, o);
   return out;
+}
+
+export function buildAttestationMessage(params: {
+  owner: PublicKey;
+  hash32: Uint8Array;
+  nonce: number | bigint;
+  timestampSec: number | bigint;
+  latitudeE6: number;
+  longitudeE6: number;
+}): Uint8Array {
+  if (params.hash32.length !== 32) throw new Error('hash32 must be 32 bytes');
+
+  const out = new Uint8Array(ATTESTATION_PREFIX.length + 32 + 32 + 8 + 8 + 8 + 8);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  let o = 0;
+  out.set(ATTESTATION_PREFIX, o);
+  o += ATTESTATION_PREFIX.length;
+  out.set(params.owner.toBytes(), o);
+  o += 32;
+  out.set(params.hash32, o);
+  o += 32;
+  o = putU64LE(view, o, BigInt(params.nonce));
+  o = putI64LE(view, o, BigInt(params.timestampSec));
+  o = putI64LE(view, o, BigInt(params.latitudeE6));
+  putI64LE(view, o, BigInt(params.longitudeE6));
+  return out;
+}
+
+function decodeTreeConfigMerkleTree(data: Buffer): PublicKey {
+  if (data.length < TREE_CONFIG_MIN_DATA_LEN) {
+    throw new Error(`tree_config account data too short (${data.length} bytes)`);
+  }
+  // Anchor layout: discriminator(8) + version(1) + authority(32) + tree_authority_bump(1) + merkle_tree(32)
+  const merkleTreeOffset = 8 + 1 + 32 + 1;
+  return new PublicKey(data.subarray(merkleTreeOffset, merkleTreeOffset + 32));
 }
 
 export function buildInitializeTreeInstruction(params: {
   authority: PublicKey;
-  maxCapacity?: number | bigint;
-}): { instruction: TransactionInstruction; treeConfigPda: PublicKey } {
-  const maxCapacity = params.maxCapacity ?? 100_000;
-  const [treeConfigPda] = deriveTreeConfigPda(params.authority);
+  merkleTree: PublicKey;
+}): {
+  instruction: TransactionInstruction;
+  treeConfigPda: PublicKey;
+  merkleTree: PublicKey;
+  treeAuthorityPda: PublicKey;
+} {
+  const [treeConfigPda] = deriveTreeConfigPda();
+  const [treeAuthorityPda] = deriveTreeAuthorityPda();
   const keys = [
     { pubkey: treeConfigPda, isSigner: false, isWritable: true },
+    { pubkey: params.merkleTree, isSigner: true, isWritable: true },
+    { pubkey: treeAuthorityPda, isSigner: false, isWritable: false },
     { pubkey: params.authority, isSigner: true, isWritable: true },
+    { pubkey: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: SPL_NOOP_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
   return {
     instruction: new TransactionInstruction({
       programId: PHOTO_PROOF_COMPRESSED_PROGRAM_ID,
       keys,
-      data: Buffer.from(encodeInitializeTreeArgs(maxCapacity)),
+      data: Buffer.from(encodeInitializeTreeArgs()),
     }),
     treeConfigPda,
+    merkleTree: params.merkleTree,
+    treeAuthorityPda,
   };
 }
 
@@ -148,25 +185,40 @@ export function buildRecordPhotoProofInstruction(params: {
   timestampSec: number | bigint;
   latitudeE6: number;
   longitudeE6: number;
-  merkleRoot?: Uint8Array;
-  leafIndex?: number;
+  attestationSignature64: Uint8Array;
+  feeRecipient?: PublicKey;
   treeConfigPda?: PublicKey;
-}): { instruction: TransactionInstruction; photoProofPda: PublicKey; treeConfigPda: PublicKey } {
-  const [photoProofPda] = derivePhotoProofPda(params.owner, params.hash32);
-  const treeConfigPda = params.treeConfigPda ?? deriveTreeConfigPda(params.owner)[0];
+  merkleTree?: PublicKey;
+  treeAuthorityPda?: PublicKey;
+}): {
+  instruction: TransactionInstruction;
+  treeConfigPda: PublicKey;
+  merkleTree: PublicKey;
+  treeAuthorityPda: PublicKey;
+} {
+  const treeConfigPda = params.treeConfigPda ?? deriveTreeConfigPda()[0];
+  if (!params.merkleTree) {
+    throw new Error('merkleTree is required');
+  }
+  const treeAuthorityPda = params.treeAuthorityPda ?? deriveTreeAuthorityPda()[0];
+  const feeRecipient = params.feeRecipient ?? PHOTO_PROOF_FEE_AUTHORITY;
   const data = encodeRecordPhotoProofArgs({
     hash32: params.hash32,
     nonce: params.nonce,
     timestampSec: params.timestampSec,
     latitudeE6: params.latitudeE6,
     longitudeE6: params.longitudeE6,
-    merkleRoot: params.merkleRoot,
-    leafIndex: params.leafIndex,
+    attestationSignature64: params.attestationSignature64,
   });
   const keys = [
-    { pubkey: photoProofPda, isSigner: false, isWritable: true },
     { pubkey: treeConfigPda, isSigner: false, isWritable: true },
+    { pubkey: params.merkleTree, isSigner: false, isWritable: true },
+    { pubkey: treeAuthorityPda, isSigner: false, isWritable: false },
     { pubkey: params.owner, isSigner: true, isWritable: true },
+    { pubkey: feeRecipient, isSigner: false, isWritable: true },
+    { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+    { pubkey: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: SPL_NOOP_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
   return {
@@ -175,8 +227,9 @@ export function buildRecordPhotoProofInstruction(params: {
       keys,
       data: Buffer.from(data),
     }),
-    photoProofPda,
     treeConfigPda,
+    merkleTree: params.merkleTree,
+    treeAuthorityPda,
   };
 }
 
@@ -188,32 +241,76 @@ export async function buildRecordPhotoProofTransaction(params: {
   timestampSec: number | bigint;
   latitudeE6: number;
   longitudeE6: number;
-  merkleRoot?: Uint8Array;
-  leafIndex?: number;
-  treeMaxCapacity?: number | bigint;
-}): Promise<{ transaction: VersionedTransaction; photoProofPda: PublicKey; treeConfigPda: PublicKey }> {
-  const [treeConfigPda] = deriveTreeConfigPda(params.owner);
+  attestationSignature64: Uint8Array;
+  feeRecipient?: PublicKey;
+}): Promise<{
+  transaction: VersionedTransaction;
+  treeConfigPda: PublicKey;
+  merkleTree: PublicKey;
+  additionalSigners: Keypair[];
+}> {
+  const [treeConfigPda] = deriveTreeConfigPda();
+  const [treeAuthorityPda] = deriveTreeAuthorityPda();
   const maybeTree = await params.connection.getAccountInfo(treeConfigPda);
   const setupInstructions: TransactionInstruction[] = [];
+  const additionalSigners: Keypair[] = [];
+  let merkleTree: PublicKey;
   if (!maybeTree) {
+    if (!params.owner.equals(PHOTO_PROOF_FEE_AUTHORITY)) {
+      throw new Error(
+        `Compressed tree is not initialized. Initialization must be sent by ${PHOTO_PROOF_FEE_AUTHORITY.toBase58()}`
+      );
+    }
+    const merkleTreeKeypair = Keypair.generate();
+    const lamports = await params.connection.getMinimumBalanceForRentExemption(
+      MERKLE_TREE_ACCOUNT_SPACE
+    );
+    setupInstructions.push(
+      SystemProgram.createAccount({
+        fromPubkey: params.owner,
+        newAccountPubkey: merkleTreeKeypair.publicKey,
+        lamports,
+        space: MERKLE_TREE_ACCOUNT_SPACE,
+        programId: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+      })
+    );
     setupInstructions.push(
       buildInitializeTreeInstruction({
         authority: params.owner,
-        maxCapacity: params.treeMaxCapacity ?? 100_000,
+        merkleTree: merkleTreeKeypair.publicKey,
       }).instruction
     );
+    additionalSigners.push(merkleTreeKeypair);
+    merkleTree = merkleTreeKeypair.publicKey;
+  } else {
+    merkleTree = decodeTreeConfigMerkleTree(maybeTree.data);
   }
 
-  const { instruction, photoProofPda } = buildRecordPhotoProofInstruction({
+  const { instruction } = buildRecordPhotoProofInstruction({
     owner: params.owner,
     hash32: params.hash32,
     nonce: params.nonce,
     timestampSec: params.timestampSec,
     latitudeE6: params.latitudeE6,
     longitudeE6: params.longitudeE6,
-    merkleRoot: params.merkleRoot,
-    leafIndex: params.leafIndex,
+    attestationSignature64: params.attestationSignature64,
+    feeRecipient: params.feeRecipient,
     treeConfigPda,
+    merkleTree,
+    treeAuthorityPda,
+  });
+  const attestationMessage = buildAttestationMessage({
+    owner: params.owner,
+    hash32: params.hash32,
+    nonce: params.nonce,
+    timestampSec: params.timestampSec,
+    latitudeE6: params.latitudeE6,
+    longitudeE6: params.longitudeE6,
+  });
+  const attestationIx = Ed25519Program.createInstructionWithPublicKey({
+    publicKey: PHOTO_PROOF_ATTESTATION_AUTHORITY.toBytes(),
+    message: attestationMessage,
+    signature: params.attestationSignature64,
   });
 
   const { blockhash } = await params.connection.getLatestBlockhash();
@@ -221,65 +318,26 @@ export async function buildRecordPhotoProofTransaction(params: {
     payerKey: params.owner,
     recentBlockhash: blockhash,
     instructions: [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 220_000 }),
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 240_000 }),
       ...setupInstructions,
+      attestationIx,
       instruction,
     ],
   }).compileToV0Message();
 
   return {
     transaction: new VersionedTransaction(message),
-    photoProofPda,
     treeConfigPda,
+    merkleTree,
+    additionalSigners,
   };
 }
 
-// Backward compatibility wrappers for old callsites.
-export function buildCreatePhotoDataInstruction(params: {
-  payer: PublicKey;
-  hash32: Uint8Array;
-  s3Uri: string;
-  location: string;
-  timestamp: string;
-}): { instruction: TransactionInstruction; photoDataPda: PublicKey } {
-  const { latitudeE6, longitudeE6 } = locationToFixedE6(params.location);
-  const nonce = BigInt(Math.max(1, Date.now()));
-  const timestampSec = unixSeconds(params.timestamp);
-  const { instruction, photoProofPda } = buildRecordPhotoProofInstruction({
-    owner: params.payer,
-    hash32: params.hash32,
-    nonce,
-    timestampSec,
-    latitudeE6,
-    longitudeE6,
-  });
-  return { instruction, photoDataPda: photoProofPda };
-}
-
-export async function buildCreatePhotoDataTransaction(params: {
-  connection: Connection;
-  payer: PublicKey;
-  hash32: Uint8Array;
-  s3Uri: string;
-  location: string;
-  timestamp: string;
-}): Promise<{ transaction: VersionedTransaction; photoDataPda: PublicKey }> {
-  const { latitudeE6, longitudeE6 } = locationToFixedE6(params.location);
-  const nonce = BigInt(Math.max(1, Date.now()));
-  const timestampSec = unixSeconds(params.timestamp);
-  const { transaction, photoProofPda } = await buildRecordPhotoProofTransaction({
-    connection: params.connection,
-    owner: params.payer,
-    hash32: params.hash32,
-    nonce,
-    timestampSec,
-    latitudeE6,
-    longitudeE6,
-  });
-  return { transaction, photoDataPda: photoProofPda };
-}
-
-export async function sendTransactionWithKeypair(connection: Connection, tx: Transaction, signer: Keypair): Promise<string> {
+export async function sendTransactionWithKeypair(
+  connection: Connection,
+  tx: Transaction,
+  signer: Keypair
+): Promise<string> {
   tx.partialSign(signer);
   return connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
 }
@@ -307,29 +365,35 @@ export async function uploadAndSubmit(params: {
   contentType?: string;
   timestamp: string | number;
   nonce: number | bigint;
+  attestationSignature64: Uint8Array;
 }): Promise<{
   signature: string;
-  photoProofPda: PublicKey;
   s3Key: string;
   s3Uri: string;
   hashHex: string;
 }> {
   const { hash32, hashHex } = await hashBytes(params.photoBytes);
-  const s3Key = buildS3KeyForPhoto({ seekerMint: params.seekerMint, photoHashHex: hashHex, basePrefix: params.basePrefix });
+  const s3Key = buildS3KeyForPhoto({
+    seekerMint: params.seekerMint,
+    photoHashHex: hashHex,
+    basePrefix: params.basePrefix,
+  });
   const s3Uri = buildS3Uri(params.bucket, s3Key);
 
   await putToPresignedUrl({
-    url: (await params.s3.upload({
-      key: s3Key,
-      contentType: params.contentType || 'image/jpeg',
-      bytes: params.photoBytes,
-    })).url,
+    url: (
+      await params.s3.upload({
+        key: s3Key,
+        contentType: params.contentType || 'image/jpeg',
+        bytes: params.photoBytes,
+      })
+    ).url,
     bytes: params.photoBytes,
     contentType: params.contentType || 'image/jpeg',
   });
 
   const { latitudeE6, longitudeE6 } = locationToFixedE6(params.locationString);
-  const { transaction, photoProofPda } = await buildRecordPhotoProofTransaction({
+  const { transaction } = await buildRecordPhotoProofTransaction({
     connection: params.connection,
     owner: params.owner,
     hash32,
@@ -337,10 +401,11 @@ export async function uploadAndSubmit(params: {
     timestampSec: unixSeconds(params.timestamp),
     latitudeE6,
     longitudeE6,
+    attestationSignature64: params.attestationSignature64,
   });
 
   const signature = await params.sendTransaction(transaction);
   await confirmTransaction(params.connection, signature);
 
-  return { signature, photoProofPda, s3Key, s3Uri, hashHex };
+  return { signature, s3Key, s3Uri, hashHex };
 }
