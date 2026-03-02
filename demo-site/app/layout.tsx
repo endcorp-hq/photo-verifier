@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'Citizen Science – Photo Verifier',
+  title: 'Photo Verifier',
   description: 'Images grouped by Seeker device with metadata',
 };
 
@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="site-header">
           <div className="container">
-            <h1>Citizen Science – Photo Verifier</h1>
+            <h1>Photo Verifier</h1>
             <p className="subtitle">Images grouped by Seeker device, with hash and optional proof</p>
           </div>
         </header>

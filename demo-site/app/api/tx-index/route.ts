@@ -1,30 +1,30 @@
 import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { BorshCoder, Idl } from '@coral-xyz/anchor';
 import crypto from 'crypto';
 import idl from '../../../lib/idl/photo_verifier.json';
 
-// Returns an array of decoded tx entries and logs them to the server console.
-// Shape: [{ hashHex, s3Uri, location, payer, signature, url }]
-// Env: RPC_URL (optional), PROGRAM_ID (optional), LIMIT (optional)
+// Returns decoded record_photo_proof entries.
 export async function GET() {
   try {
     const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
-    const programIdStr = process.env.PROGRAM_ID || (idl as any).metadata.address || 'J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt';
+    const programIdStr = process.env.PROGRAM_ID || (idl as any).metadata.address || '8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz';
     const limit = Number(process.env.LIMIT || 100);
 
     const connection = new Connection(rpcUrl, 'confirmed');
-    // console.log('tx-index: Using RPC', rpcUrl);
     const programId = new PublicKey(programIdStr);
-    const fixedIdl = { ...(idl as any), types: (idl as any).types ?? [] } as Idl;
-    const coder = new BorshCoder(fixedIdl);
+    const recordProofDisc = crypto.createHash('sha256').update('global:record_photo_proof').digest().subarray(0, 8);
 
-    // Fetch recent signatures for the programId
     const sigs = await connection.getSignaturesForAddress(programId, { limit });
-    console.log('tx-index: fetched signatures', sigs.length);
-    const out: Array<{ hashHex: string; s3Uri: string; location: string; payer: string; signature: string; url: string; timestamp?: string }>= [];
+    const out: Array<{
+      hashHex: string;
+      location: string;
+      payer: string;
+      signature: string;
+      url: string;
+      timestamp?: string;
+      nonce?: string;
+    }> = [];
 
-    // Fetch transactions in small batches to avoid rate limits
     const batchSize = 10;
     for (let i = 0; i < sigs.length; i += batchSize) {
       const chunk = sigs.slice(i, i + batchSize);
@@ -45,44 +45,28 @@ export async function GET() {
           return progKey && progKey.toBase58 && progKey.toBase58() === programId.toBase58();
         });
         if (!ix) continue;
+
         const dataB64: string = typeof ix.data === 'string' ? ix.data : Buffer.from(ix.data).toString('base64');
         const raw = Buffer.from(dataB64, 'base64');
-        let hashHex = '';
-        let s3Uri = '';
-        let location = '';
-        let timestamp: string | undefined = undefined;
-        try {
-          const decoded = coder.instruction.decode(raw) as any;
-          if (!decoded || decoded.name !== 'createPhotoData') throw new Error('not our ix');
-          const arr: number[] = decoded.data.hash as number[];
-          hashHex = Buffer.from(Uint8Array.from(arr)).toString('hex');
-          s3Uri = String(decoded.data.s3Uri);
-          location = String(decoded.data.location);
-          if (decoded.data.timestamp) timestamp = String(decoded.data.timestamp);
-        } catch {
-          // Fallback manual decode using discriminator
-          const disc = crypto.createHash('sha256').update('global:create_photo_data').digest().subarray(0, 8);
-          if (raw.length < 8 || !raw.subarray(0, 8).equals(disc)) continue;
-          let o = 8;
-          const hash = raw.subarray(o, o + 32); o += 32;
-          const s3Len = raw.readUInt32LE(o); o += 4;
-          s3Uri = raw.subarray(o, o + s3Len).toString('utf8'); o += s3Len;
-          const locLen = raw.readUInt32LE(o); o += 4;
-          location = raw.subarray(o, o + locLen).toString('utf8'); o += locLen;
-          if (o + 4 <= raw.length) {
-            const tsLen = raw.readUInt32LE(o); o += 4;
-            if (o + tsLen <= raw.length) {
-              timestamp = raw.subarray(o, o + tsLen).toString('utf8');
-            }
-          }
-          hashHex = Buffer.from(hash).toString('hex');
-        }
-        const payerIdx = (ix.accounts?.[0] ?? 0) as number;
+        if (raw.length < 8 || !raw.subarray(0, 8).equals(recordProofDisc)) continue;
+
+        let o = 8;
+        const hash = raw.subarray(o, o + 32); o += 32;
+        const nonce = raw.readBigUInt64LE(o).toString(); o += 8;
+        const timestampSec = Number(raw.readBigInt64LE(o)); o += 8;
+        const latitudeE6 = Number(raw.readBigInt64LE(o)); o += 8;
+        const longitudeE6 = Number(raw.readBigInt64LE(o)); o += 8;
+        o += 32; // merkle_root
+        o += 4; // leaf_index
+
+        const hashHex = Buffer.from(hash).toString('hex');
+        const location = `${latitudeE6 / 1_000_000},${longitudeE6 / 1_000_000}`;
+        const timestamp = Number.isFinite(timestampSec) ? new Date(timestampSec * 1000).toISOString() : undefined;
+        const payerIdx = (ix.accounts?.[2] ?? 0) as number;
         const payer = keys[payerIdx]?.toBase58?.() || '';
         const url = `https://solscan.io/tx/${sig}?cluster=devnet`;
-        const entry = { hashHex, s3Uri, location, payer, signature: sig, url, timestamp };
-        console.log('Decoded tx entry:', entry);
-        out.push(entry);
+
+        out.push({ hashHex, location, payer, signature: sig, url, timestamp, nonce });
       }
     }
 
@@ -91,5 +75,3 @@ export async function GET() {
     return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 });
   }
 }
-
-
