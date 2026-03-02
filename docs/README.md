@@ -10,6 +10,9 @@ This is the entrypoint for the current devnet architecture and operations.
 - [Troubleshooting](./TROUBLESHOOTING.md)
 - [SDK API Reference](./API.md)
 - [Licensing](./LICENSING.md)
+- [SDK Packaging Strategy](./SDK_PACKAGING_STRATEGY.md)
+- [SDK Migration Guide](./SDK_MIGRATION.md)
+- [NPM Release Workflow](./NPM_RELEASE_WORKFLOW.md)
 
 ## Recommended Reading Order
 
