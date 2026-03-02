@@ -28,9 +28,13 @@ jobs:
       
       - name: Build packages
         run: |
-          pnpm --filter @citizen-science-sdk/core build
-          pnpm --filter @citizen-science-sdk/blockchain build
-          pnpm --filter @citizen-science-sdk/photoverifier-sdk build
+          pnpm --filter @photoverifier/core build
+          pnpm --filter @photoverifier/blockchain build
+          pnpm --filter @photoverifier/sdk build
+          pnpm --filter @photoverifier/seeker-sdk build
+
+      - name: Pack check
+        run: pnpm release:pack-check
       
       - name: Publish core package
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -52,6 +56,14 @@ jobs:
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: |
           cd packages/photoverifier-sdk
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish seeker SDK
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd packages/photoverifier-seeker-sdk
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
