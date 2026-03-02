@@ -3,58 +3,69 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/clien
 import type { ListObjectsV2CommandOutput } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Connection, PublicKey } from '@solana/web3.js';
-import idl from '../../../lib/idl/photo_verifier.json';
-
-// Expected env vars on Vercel
-// S3_BUCKET, S3_REGION, S3_PREFIX (e.g., 'photos/'), OPTIONAL: S3_CDN_DOMAIN, PROGRAM_ID, RPC_URL
+import { utils as anchorUtils } from '@coral-xyz/anchor';
+import { createHash } from 'crypto';
 
 const BUCKET = process.env.S3_BUCKET || 'photoverifier';
 const REGION = process.env.S3_REGION || 'us-east-1';
 const PREFIX = normalizePrefix(process.env.S3_PREFIX || 'photos/');
 const CDN = process.env.S3_CDN_DOMAIN || null;
 const RPC_URL = process.env.RPC_URL || 'https://api.devnet.solana.com';
+const PROGRAM_ID = process.env.PROGRAM_ID || '3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu';
+
 const INCLUDE_PROOF_SIDECAR = process.env.INCLUDE_PROOF_SIDECAR === 'true';
 const MAX_LIST_ITEMS = Number(process.env.MAX_LIST_ITEMS || 200);
+const MAX_SIGNATURES = Number(process.env.MAX_SIGNATURES || 200);
+const TX_PAGE_SIZE = Number(process.env.TX_PAGE_SIZE || 50);
 const LIST_CACHE_TTL_MS = Number(process.env.LIST_CACHE_TTL_MS || 15000);
-const PROOF_CACHE_TTL_MS = Number(process.env.TX_CACHE_TTL_MS || 5000);
-const PHOTO_PROOF_COMPRESSED_PROGRAM_ID =
-  process.env.PROGRAM_ID || (idl as any).metadata.address || '8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz';
-const PHOTO_METADATA_DISCRIMINATOR = Buffer.from([109, 215, 179, 76, 191, 160, 52, 39]);
-const EXPLORER_CLUSTER = inferExplorerCluster(RPC_URL);
+const TX_CACHE_TTL_MS = Number(process.env.TX_CACHE_TTL_MS || 5000);
 
-type PhotoMetadataProof = {
-  proofAccount: string;
-  owner: string;
+const EXPLORER_CLUSTER = inferExplorerCluster(RPC_URL);
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || extractApiKeyFromUrl(RPC_URL);
+const HELIUS_TX_API_BASE =
+  process.env.HELIUS_TX_API_BASE || inferHeliusTxApiBase(RPC_URL, EXPLORER_CLUSTER);
+const RECORD_PROOF_DISC = createHash('sha256')
+  .update('global:record_photo_proof')
+  .digest()
+  .subarray(0, 8);
+const RECORD_PROOF_MIN_LEN = 8 + 32 + 8 + 8 + 8 + 8;
+
+type TxEntry = {
   hashHex: string;
-  nonce: string;
-  timestamp: string | null;
-  timestampSec: number;
   location: string;
-  latitudeE6: number;
-  longitudeE6: number;
-  merkleRootHex: string;
-  leafIndex: number;
-  bump: number;
-  createdAt: string | null;
-  createdAtSec: number;
+  payer: string;
+  signature: string;
+  url: string;
+  timestamp: string | null;
+  nonce: string;
+};
+type HeliusAddressInstruction = {
+  programId?: string;
+  data?: string;
+  accounts?: string[];
+};
+type HeliusAddressTransaction = {
+  signature?: string;
+  timestamp?: number;
+  instructions?: HeliusAddressInstruction[];
 };
 
-let __proofEntriesCache: { ts: number; out: PhotoMetadataProof[] } | null = null;
+const s3 = new S3Client({ region: REGION });
+
+let __txEntriesCache: { ts: number; out: TxEntry[] } | null = null;
 let __listResponseCache: { ts: number; out: any } | null = null;
 
-const s3 = new S3Client({ region: REGION });
-// Force dynamic execution and disable caching so we always fetch fresh data on refresh
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
 export async function GET(request: Request) {
   try {
-    console.log('list: GET start');
     const requestUrl = new URL(request.url);
     const includeProofSidecar =
       INCLUDE_PROOF_SIDECAR || requestUrl.searchParams.get('includeProofSidecar') === '1';
     const bypassCache = requestUrl.searchParams.get('refresh') === '1';
+
     if (
       !bypassCache &&
       !includeProofSidecar &&
@@ -64,23 +75,22 @@ export async function GET(request: Request) {
       return NextResponse.json(__listResponseCache.out);
     }
 
-    let proofs: PhotoMetadataProof[] = [];
+    let txEntries: TxEntry[] = [];
+    let txLookupWarning: string | null = null;
     try {
-      proofs = await loadProofAccounts();
+      txEntries = await loadTxEntries();
     } catch (e: any) {
-      console.error('loadProofAccounts error', e);
-      proofs = [];
+      txLookupWarning = `tx_lookup_unavailable: ${String(e?.message || e || 'unknown error')}`;
+      txEntries = __txEntriesCache?.out ?? [];
+      console.warn('list: tx lookup degraded', txLookupWarning);
     }
-    console.log('list: loaded proof accounts', proofs.length);
-
-    const proofsByHash = new Map<string, PhotoMetadataProof[]>();
-    for (const proof of proofs) {
-      const key = proof.hashHex.toLowerCase();
-      if (!proofsByHash.has(key)) proofsByHash.set(key, []);
-      proofsByHash.get(key)!.push(proof);
+    const txByHash = new Map<string, TxEntry[]>();
+    for (const tx of txEntries) {
+      const key = tx.hashHex.toLowerCase();
+      if (!txByHash.has(key)) txByHash.set(key, []);
+      txByHash.get(key)!.push(tx);
     }
 
-    // List objects under PREFIX. Keys look like: photos/<SEEKER>/<HASH>.jpg
     const listed: string[] = [];
     let token: string | undefined = undefined;
     do {
@@ -97,35 +107,32 @@ export async function GET(request: Request) {
       token = out.IsTruncated ? out.NextContinuationToken : undefined;
     } while (token);
 
-    // Build responses and optionally include proof JSON sidecars when explicitly enabled
     const items = await Promise.all(
       listed.map(async (key) => {
         const { seekerMint, hashHex } = parsePhotoKey(key, PREFIX);
         const url = await buildPublicUrlOrPresigned(BUCKET, key, CDN);
-        let proof: any = null;
+
+        let sidecar: any = null;
         let proofUrl: string | null = null;
         if (includeProofSidecar) {
-          const proofKey = key.replace(/\.[^.]+$/g, '.json');
+          const sidecarKey = key.replace(/\.[^.]+$/g, '.json');
           try {
-            const getUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: proofKey }), {
-              expiresIn: 60,
-            });
-            const res = await fetch(getUrl);
+            const sidecarSignedUrl = await getSignedUrl(
+              s3,
+              new GetObjectCommand({ Bucket: BUCKET, Key: sidecarKey }),
+              { expiresIn: 60 }
+            );
+            const res = await fetch(sidecarSignedUrl);
             if (res.ok) {
-              proof = await res.json().catch(() => null);
-              proofUrl = getUrl;
+              sidecar = await res.json().catch(() => null);
+              proofUrl = sidecarSignedUrl;
             }
           } catch {}
         }
 
-        const payloadWallet = proof?.payload?.wallet ?? proof?.payload?.owner ?? null;
-        const candidates = proofsByHash.get(hashHex.toLowerCase()) ?? [];
-        const match = pickBestProof(candidates, payloadWallet);
-        const signature = proof?.signature ?? null;
-        const tx =
-          signature && typeof signature === 'string'
-            ? `https://solscan.io/tx/${signature}${EXPLORER_CLUSTER === 'mainnet-beta' ? '' : `?cluster=${EXPLORER_CLUSTER}`}`
-            : null;
+        const payloadWallet = sidecar?.payload?.wallet ?? sidecar?.payload?.owner ?? null;
+        const candidates = txByHash.get(hashHex.toLowerCase()) ?? [];
+        const match = pickBestEntry(candidates, payloadWallet);
 
         return {
           key,
@@ -134,45 +141,39 @@ export async function GET(request: Request) {
           hashHex,
           timestamp:
             match?.timestamp ??
-            (Number.isFinite(Number(proof?.payload?.timestampSec))
-              ? new Date(Number(proof.payload.timestampSec) * 1000).toISOString()
-              : proof?.payload?.timestamp ?? null),
-          location: match?.location ?? proof?.payload?.location ?? null,
-          owner: match?.owner ?? payloadWallet,
-          signature,
-          nonce: match?.nonce ?? proof?.payload?.nonce ?? null,
-          merkleRootHex: match?.merkleRootHex ?? null,
-          leafIndex: match?.leafIndex ?? null,
-          createdAt: match?.createdAt ?? null,
-          proofAccount: match?.proofAccount ?? null,
-          proofAccountUrl: match
-            ? `https://solscan.io/account/${match.proofAccount}${EXPLORER_CLUSTER === 'mainnet-beta' ? '' : `?cluster=${EXPLORER_CLUSTER}`}`
-            : null,
+            (Number.isFinite(Number(sidecar?.payload?.timestampSec))
+              ? new Date(Number(sidecar.payload.timestampSec) * 1000).toISOString()
+              : sidecar?.payload?.timestamp ?? null),
+          location: match?.location ?? sidecar?.payload?.location ?? null,
+          owner: match?.payer ?? payloadWallet,
+          signature: match?.signature ?? null,
+          nonce: match?.nonce ?? sidecar?.payload?.nonce ?? null,
+          tx: match?.url ?? null,
           onChainVerified: Boolean(match),
           proofUrl,
-          tx,
         };
       })
     );
 
     const imageHashes = new Set(items.map((item) => String(item.hashHex || '').toLowerCase()));
     const matchedImages = items.filter((item) => item.onChainVerified).length;
-    const proofsWithImage = proofs.filter((proof) => imageHashes.has(proof.hashHex.toLowerCase())).length;
+    const txWithImage = txEntries.filter((tx) => imageHashes.has(tx.hashHex.toLowerCase())).length;
 
     const responseBody = {
       items,
-      proofs,
+      proofs: txEntries,
       summary: {
         totalImages: items.length,
         onChainMatchedImages: matchedImages,
         unmatchedImages: items.length - matchedImages,
-        totalProofAccounts: proofs.length,
-        proofAccountsWithImage: proofsWithImage,
-        orphanedProofAccounts: proofs.length - proofsWithImage,
+        totalProofAccounts: txEntries.length,
+        proofAccountsWithImage: txWithImage,
+        orphanedProofAccounts: txEntries.length - txWithImage,
       },
       bucket: BUCKET,
       prefix: PREFIX,
-      programId: PHOTO_PROOF_COMPRESSED_PROGRAM_ID,
+      programId: PROGRAM_ID,
+      txLookupWarning,
     };
 
     if (!includeProofSidecar) {
@@ -185,77 +186,206 @@ export async function GET(request: Request) {
   }
 }
 
-async function loadProofAccounts(): Promise<PhotoMetadataProof[]> {
-  if (__proofEntriesCache && Date.now() - __proofEntriesCache.ts < PROOF_CACHE_TTL_MS) {
-    return __proofEntriesCache.out;
+async function loadTxEntries(): Promise<TxEntry[]> {
+  if (__txEntriesCache && Date.now() - __txEntriesCache.ts < TX_CACHE_TTL_MS) {
+    return __txEntriesCache.out;
   }
-  const programId = new PublicKey(PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
-  const connection = new Connection(RPC_URL, 'confirmed');
-  const accounts = await connection.getProgramAccounts(programId, { commitment: 'confirmed' });
-  const out: PhotoMetadataProof[] = [];
-  for (const account of accounts) {
-    const decoded = decodePhotoMetadata(account.account.data);
-    if (!decoded) continue;
-    out.push({
-      proofAccount: account.pubkey.toBase58(),
-      ...decoded,
-    });
+
+  let out: TxEntry[] = [];
+  if (HELIUS_API_KEY && HELIUS_TX_API_BASE) {
+    try {
+      out = await loadTxEntriesViaHelius();
+    } catch (e: any) {
+      console.warn('list: helius tx index failed; falling back to RPC scan', e?.message || e);
+      out = await loadTxEntriesViaRpc();
+    }
+  } else {
+    out = await loadTxEntriesViaRpc();
   }
-  out.sort((a, b) => b.createdAtSec - a.createdAtSec);
-  __proofEntriesCache = { ts: Date.now(), out };
+
+  __txEntriesCache = { ts: Date.now(), out };
   return out;
 }
 
-function decodePhotoMetadata(data: Buffer): Omit<PhotoMetadataProof, 'proofAccount'> | null {
-  if (data.length < 149) return null;
-  if (!data.subarray(0, 8).equals(PHOTO_METADATA_DISCRIMINATOR)) return null;
+async function loadTxEntriesViaHelius(): Promise<TxEntry[]> {
+  if (!HELIUS_API_KEY || !HELIUS_TX_API_BASE) {
+    throw new Error('Helius API key/base unavailable');
+  }
+
+  const out: TxEntry[] = [];
+  let before: string | undefined = undefined;
+
+  while (out.length < MAX_SIGNATURES) {
+    const limit = Math.min(TX_PAGE_SIZE, MAX_SIGNATURES - out.length, 100);
+    const query = new URLSearchParams({
+      'api-key': HELIUS_API_KEY,
+      limit: String(limit),
+    });
+    if (before) query.set('before', before);
+    const endpoint = `${HELIUS_TX_API_BASE}/v0/addresses/${PROGRAM_ID}/transactions?${query.toString()}`;
+
+    const res = await fetch(endpoint, { cache: 'no-store' });
+    if (res.status === 429) {
+      if (out.length > 0) break;
+      throw new Error(`429 Too Many Requests: ${await res.text()}`);
+    }
+    if (!res.ok) {
+      throw new Error(`Helius tx API ${res.status}: ${await res.text()}`);
+    }
+
+    const page = (await res.json()) as HeliusAddressTransaction[];
+    if (!Array.isArray(page) || !page.length) break;
+
+    for (const tx of page) {
+      const signature = tx.signature || '';
+      if (!signature) continue;
+      const timestamp =
+        Number.isFinite(Number(tx.timestamp)) && Number(tx.timestamp) > 0
+          ? new Date(Number(tx.timestamp) * 1000).toISOString()
+          : null;
+      for (const ix of tx.instructions ?? []) {
+        if (ix.programId !== PROGRAM_ID) continue;
+        const raw = decodeIxData(ix.data);
+        const decoded = decodeRecordProof(raw);
+        if (!decoded) continue;
+        const payer = ix.accounts?.[3] ?? '';
+        const url = `https://solscan.io/tx/${signature}${
+          EXPLORER_CLUSTER === 'mainnet-beta' ? '' : `?cluster=${EXPLORER_CLUSTER}`
+        }`;
+        out.push({
+          hashHex: decoded.hashHex,
+          location: decoded.location,
+          nonce: decoded.nonce,
+          timestamp,
+          payer,
+          signature,
+          url,
+        });
+      }
+    }
+
+    const lastSig = page[page.length - 1]?.signature;
+    if (!lastSig) break;
+    before = lastSig;
+  }
+
+  return out;
+}
+
+async function loadTxEntriesViaRpc(): Promise<TxEntry[]> {
+  const programId = new PublicKey(PROGRAM_ID);
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const out: TxEntry[] = [];
+
+  let before: string | undefined = undefined;
+  while (out.length < MAX_SIGNATURES) {
+    const need = Math.min(TX_PAGE_SIZE, MAX_SIGNATURES - out.length);
+    let sigInfos: Awaited<ReturnType<Connection['getSignaturesForAddress']>> | null = null;
+    try {
+      sigInfos = await connection.getSignaturesForAddress(programId, { limit: need, before });
+    } catch (e) {
+      if (out.length > 0) break;
+      throw e;
+    }
+    if (!sigInfos) break;
+    if (!sigInfos.length) break;
+    before = sigInfos[sigInfos.length - 1]?.signature;
+
+    let txs: Awaited<ReturnType<Connection['getTransactions']>> | null = null;
+    try {
+      txs = await connection.getTransactions(
+        sigInfos.map((s) => s.signature),
+        { maxSupportedTransactionVersion: 0 }
+      );
+    } catch (e) {
+      if (out.length > 0) break;
+      throw e;
+    }
+    if (!txs) break;
+
+    for (let i = 0; i < txs.length; i++) {
+      const tx = txs[i];
+      const signature = sigInfos[i]?.signature;
+      if (!tx || !tx.transaction || !signature) continue;
+
+      const message: any = tx.transaction.message as any;
+      const keys = message.staticAccountKeys || message.accountKeys || [];
+      const instrs = message.compiledInstructions || message.instructions || [];
+      const ix = instrs.find((ci: any) => {
+        const progKey = keys[ci.programIdIndex];
+        return progKey && progKey.toBase58 && progKey.toBase58() === programId.toBase58();
+      });
+      if (!ix) continue;
+
+      const dataB64: string =
+        typeof ix.data === 'string' ? ix.data : Buffer.from(ix.data).toString('base64');
+      const raw = Buffer.from(dataB64, 'base64');
+      const decoded = decodeRecordProof(raw);
+      if (!decoded) continue;
+      const timestamp = decoded.timestampSec
+        ? new Date(decoded.timestampSec * 1000).toISOString()
+        : null;
+      const payerIdx = (ix.accounts?.[3] ?? ix.accounts?.[2] ?? 0) as number;
+      const payer = keys[payerIdx]?.toBase58?.() || '';
+      const url = `https://solscan.io/tx/${signature}${
+        EXPLORER_CLUSTER === 'mainnet-beta' ? '' : `?cluster=${EXPLORER_CLUSTER}`
+      }`;
+      out.push({
+        hashHex: decoded.hashHex,
+        location: decoded.location,
+        nonce: decoded.nonce,
+        payer,
+        signature,
+        url,
+        timestamp,
+      });
+    }
+  }
+
+  return out;
+}
+
+function decodeIxData(data: string | undefined): Buffer | null {
+  if (!data) return null;
+  try {
+    return Buffer.from(anchorUtils.bytes.bs58.decode(data));
+  } catch {}
+  try {
+    const raw = Buffer.from(data, 'base64');
+    if (raw.length > 0) return raw;
+  } catch {}
+  return null;
+}
+
+function decodeRecordProof(
+  raw: Buffer | null
+): { hashHex: string; nonce: string; location: string; timestampSec: number } | null {
+  if (!raw || raw.length < RECORD_PROOF_MIN_LEN) return null;
+  if (!raw.subarray(0, 8).equals(RECORD_PROOF_DISC)) return null;
+
   let o = 8;
-  const owner = new PublicKey(data.subarray(o, o + 32)).toBase58();
+  const hash = raw.subarray(o, o + 32);
   o += 32;
-  const hashHex = Buffer.from(data.subarray(o, o + 32)).toString('hex');
-  o += 32;
-  const nonce = data.readBigUInt64LE(o).toString();
+  const nonce = raw.readBigUInt64LE(o).toString();
   o += 8;
-  const timestampSec = Number(data.readBigInt64LE(o));
+  const timestampSec = Number(raw.readBigInt64LE(o));
   o += 8;
-  const latitudeE6 = Number(data.readBigInt64LE(o));
+  const latitudeE6 = Number(raw.readBigInt64LE(o));
   o += 8;
-  const longitudeE6 = Number(data.readBigInt64LE(o));
-  o += 8;
-  const merkleRootHex = Buffer.from(data.subarray(o, o + 32)).toString('hex');
-  o += 32;
-  const leafIndex = data.readUInt32LE(o);
-  o += 4;
-  const bump = data.readUInt8(o);
-  o += 1;
-  const createdAtSec = Number(data.readBigInt64LE(o));
+  const longitudeE6 = Number(raw.readBigInt64LE(o));
 
   return {
-    owner,
-    hashHex,
+    hashHex: Buffer.from(hash).toString('hex'),
     nonce,
-    timestamp: toIsoTimestamp(timestampSec),
-    timestampSec,
     location: `${latitudeE6 / 1_000_000},${longitudeE6 / 1_000_000}`,
-    latitudeE6,
-    longitudeE6,
-    merkleRootHex,
-    leafIndex,
-    bump,
-    createdAt: toIsoTimestamp(createdAtSec),
-    createdAtSec,
+    timestampSec: Number.isFinite(timestampSec) ? timestampSec : 0,
   };
 }
 
-function pickBestProof(candidates: PhotoMetadataProof[], preferredOwner: string | null): PhotoMetadataProof | null {
+function pickBestEntry(candidates: TxEntry[], preferredOwner: string | null): TxEntry | null {
   if (!candidates.length) return null;
   if (!preferredOwner) return candidates[0];
-  return candidates.find((proof) => proof.owner === preferredOwner) ?? candidates[0];
-}
-
-function toIsoTimestamp(seconds: number): string | null {
-  if (!Number.isFinite(seconds)) return null;
-  return new Date(seconds * 1000).toISOString();
+  return candidates.find((entry) => entry.payer === preferredOwner) ?? candidates[0];
 }
 
 function normalizePrefix(p: string): string {
@@ -280,12 +410,15 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function buildPublicUrlOrPresigned(bucket: string, key: string, cdnDomain: string | null): Promise<string> {
+async function buildPublicUrlOrPresigned(
+  bucket: string,
+  key: string,
+  cdnDomain: string | null
+): Promise<string> {
   if (cdnDomain) {
     const path = key.startsWith('/') ? key : '/' + key;
     return `https://${cdnDomain}${path}`;
   }
-  // Fallback: presign short expiry URL
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(s3, command, { expiresIn: 60 });
 }
@@ -295,4 +428,23 @@ function inferExplorerCluster(rpcUrl: string): 'mainnet-beta' | 'devnet' | 'test
   if (lower.includes('testnet')) return 'testnet';
   if (lower.includes('mainnet')) return 'mainnet-beta';
   return 'devnet';
+}
+
+function extractApiKeyFromUrl(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get('api-key');
+  } catch {
+    return null;
+  }
+}
+
+function inferHeliusTxApiBase(
+  rpcUrl: string,
+  cluster: 'mainnet-beta' | 'devnet' | 'testnet'
+): string | null {
+  const lower = rpcUrl.toLowerCase();
+  const looksLikeHelius = lower.includes('helius');
+  if (!looksLikeHelius && !process.env.HELIUS_API_KEY) return null;
+  if (cluster === 'devnet') return 'https://api-devnet.helius.xyz';
+  return 'https://api.helius.xyz';
 }
