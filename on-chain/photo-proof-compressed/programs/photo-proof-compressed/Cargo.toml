@@ -20,4 +20,7 @@ idl-build = ["anchor-lang/idl-build"]
 anchor-lang = "0.31.1"
 # Uncomment for actual compression integration:
 # spl-account-compression = "0.2.0"
-# mpl-bubblegum = "3.1.2"
+
+# Force lockfile format v3 for compatibility with Anchor
+[profile.dev.package."*"]
+opt-level = 3
