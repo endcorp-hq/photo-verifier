@@ -3,10 +3,26 @@ export type PresignResponse = {
   key: string;
 };
 
+export type PresignIntegrityPayload = {
+  hashHex: string;
+  location: string;
+  timestampSec: number;
+  wallet: string;
+  nonce: string;
+  slot: number;
+  blockhash: string;
+};
+
+export type PresignIntegrityEnvelope = {
+  version: 'v1';
+  payload: PresignIntegrityPayload;
+  signature: string; // base64 detached Ed25519 signature over canonical payload JSON
+};
+
 export async function requestPresignedPut(endpoint: string, params: {
   key: string;
   contentType: string;
-  // optional fields if backend wants hints
+  integrity: PresignIntegrityEnvelope;
 }): Promise<PresignResponse> {
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -19,5 +35,3 @@ export async function requestPresignedPut(endpoint: string, params: {
   }
   return res.json();
 }
-
-
