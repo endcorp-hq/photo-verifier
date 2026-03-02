@@ -51,7 +51,7 @@ services:
       solana-test-validator
       --reset
       --mintable
-      --bpf-program 8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz target/deploy/photo_proof_compressed.so
+      --bpf-program 3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu target/deploy/photo_proof_compressed.so
     volumes:
       - ./on-chain/photo-proof-compressed/target/deploy:/app/deploy
       - solana_data:/root/.solana

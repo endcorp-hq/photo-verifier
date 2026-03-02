@@ -349,7 +349,7 @@ start_services() {
 
 # Solana (devnet)
 PHOTOVERIFIER_RPC_URL=https://api.devnet.solana.com
-PHOTOVERIFIER_PROGRAM_ID=8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz
+PHOTOVERIFIER_PROGRAM_ID=3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu
 
 # LocalStack S3
 PHOTOVERIFIER_S3_PRESIGN_URL=http://localhost:3000/uploads
