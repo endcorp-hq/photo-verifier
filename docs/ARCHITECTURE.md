@@ -1,119 +1,151 @@
 # Architecture and Data Flow
 
-## Purpose
+## Goal
 
-The system proves that a photo hash was submitted by a wallet holder, tied to a verified chain timestamp/H3 payload, and appended on Solana via compressed accounts.
+Produce a verifiable proof that a submitted photo corresponds to:
+
+- device-captured bytes hashed locally
+- wallet-signed integrity payload
+- chain-anchored timestamp/block reference
+- privacy-preserving H3 location cell
+- server attestation verified on-chain
+
+## High-Level System
+
+```mermaid
+flowchart LR
+  A[Expo App] --> B[Wallet Signatures]
+  A --> C[Presign API]
+  C --> D[S3 Upload URL]
+  A --> D
+  A --> E[Solana Program]
+  C --> E
+  E --> F[Compressed Merkle Tree]
+  D --> G[Stored Image Bytes]
+  H[Demo Site] --> G
+  H --> E
+```
 
 ## Components
 
-- `photo-verifier` (Expo app): captures image bytes, derives H3 cell from device location, anchors to chain time, signs payload, and submits flow.
-- `@photoverifier/sdk`: hash/storage helpers, seeker checks, transaction builders, presign response parser.
-- `presign API` (AWS Lambda + API Gateway): verifies integrity envelope, validates chain anchor freshness, signs attestation, returns presigned S3 PUT URL.
-- `S3` bucket: stores uploaded image bytes by deterministic key (`photos/<seekerMint>/<hash>.jpg`).
-- `photo-proof-compressed` program (Anchor): verifies server attestation and appends leaf to compressed Merkle tree.
-- `demo-site` (Next.js): lists S3 images and correlates with on-chain records from tx index lookups.
+- `photo-verifier` app:
+  - captures image
+  - computes BLAKE3 hash locally
+  - derives H3 cell via SDK (`h3-reactnative` backend)
+  - gets chain anchor (`slot`, `blockhash`, `block time`)
+  - signs canonical integrity payload
+  - uploads image and submits transaction
+- `@photoverifier/sdk`:
+  - hash/storage/location helpers
+  - H3 helpers (`locationToH3Cell`, `h3CellToU64`)
+  - presign parser + canonicalization
+  - transaction builders for `photo-proof-compressed`
+- Presign API (Lambda/API Gateway):
+  - verifies wallet signature over canonical payload
+  - validates chain anchor freshness
+  - signs attestation message with server key
+  - returns presigned S3 PUT URL + attestation signature
+- S3:
+  - stores image objects (not on-chain)
+  - key pattern: `photos/<seekerMint>/<hash>.jpg`
+- `photo-proof-compressed` program:
+  - verifies ed25519 pre-instruction by attestation authority
+  - verifies message fields (owner/hash/nonce/timestamp/h3)
+  - charges fee and appends compressed leaf
+- `demo-site`:
+  - lists S3 objects
+  - correlates with on-chain records via Helius/RPC tx scans
+  - displays verification summary
 
 ## Trust Boundaries
 
-- Client inputs are untrusted by default.
-- Presign API verifies wallet signature and chain anchor before granting upload.
-- On-chain program trusts only attestations signed by `ATTESTATION_AUTHORITY`.
-- S3 object storage is treated as blob storage; authenticity is anchored by hash + on-chain append.
+- Client payload is untrusted by default.
+- Presign API validates wallet signature and anchor constraints before upload authorization.
+- On-chain program trusts only signatures from configured attestation authority.
+- S3 is storage only; authenticity depends on signed payload + on-chain append.
 
-## Key Identifiers
+## Integrity Payload (v1)
 
-| Name | Value | Source of truth |
-|---|---|---|
-| Program ID | `3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu` | `on-chain/.../src/lib.rs`, `packages/.../onchain.ts` |
-| Program upgrade authority | `8gXhVFRwWuJZzB6LPD1QRvvqJoy4hPv16PqknJdKapQn` | `solana program show` |
-| Fee authority (record fee recipient) | `DTrsex7XGyS6QstUr4GFZ4cHYEm4YoeD75799A7ns7Sc` | `on-chain/.../src/lib.rs`, SDK constant |
-| Attestation authority (public) | `Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk` | `on-chain/.../src/lib.rs`, SDK + infra defaults |
+Canonical fields:
 
-## Flow 1: Capture and Presign Authorization
+- `hashHex`
+- `h3Cell`
+- `h3Resolution`
+- `timestampSec`
+- `wallet`
+- `nonce`
+- `slot`
+- `blockhash`
 
-```mermaid
-sequenceDiagram
-    participant App as Expo App
-    participant Wallet as Solana Wallet
-    participant RPC as Solana RPC (devnet)
-    participant API as Presign API
+Canonicalization is strict JSON key order (SDK helper).
 
-    App->>RPC: getLatestBlockhashAndContext()
-    RPC-->>App: slot + blockhash
-    App->>RPC: getBlockTime(slot)
-    RPC-->>App: timestampSec
-    App->>Wallet: signMessage(canonical integrity payload)
-    Wallet-->>App: detached Ed25519 signature
-    App->>API: POST /uploads {key, integrity envelope}
-    API->>RPC: isBlockhashValid + getBlock(slot)
-    API-->>API: verify wallet sig + nonce freshness + H3 fields
-    API-->>App: {uploadURL, key, attestationSignature, attestationPublicKey}
-```
+## On-chain Record Fields
 
-## Flow 2: Upload and On-chain Append
+`record_photo_proof` args:
+
+- `hash: [u8; 32]`
+- `nonce: u64`
+- `timestamp: i64`
+- `h3_index: u64`
+- `attestation_signature: [u8; 64]`
+
+Attestation message prefix: `photo-proof-attestation-v1`.
+
+## Sequence: Capture to Upload Authorization
 
 ```mermaid
 sequenceDiagram
-    participant App as Expo App
-    participant S3 as AWS S3
-    participant Wallet as Solana Wallet
-    participant Chain as photo-proof-compressed Program
+  participant App as Expo App
+  participant Wallet as Wallet
+  participant RPC as Solana RPC
+  participant API as Presign API
 
-    App->>S3: PUT bytes to presigned uploadURL
-    S3-->>App: 200 OK
-    App->>Wallet: sign transaction (ed25519 ix + record_photo_proof)
-    Wallet-->>App: signed tx
-    App->>Chain: send transaction
-    Chain-->>Chain: verify previous ed25519 ix
-    Chain-->>Chain: verify attestation signer + message binding
-    Chain-->>Chain: transfer fee + append compressed leaf
-    Chain-->>App: transaction signature
+  App->>RPC: getLatestBlockhashAndContext
+  RPC-->>App: slot + blockhash
+  App->>RPC: getBlockTime(slot)
+  RPC-->>App: timestampSec
+  App->>Wallet: sign(canonical integrity payload)
+  Wallet-->>App: detached signature
+  App->>API: POST /uploads {key, integrity envelope}
+  API->>RPC: validate blockhash/slot/time
+  API-->>API: verify wallet sig + nonce policy + payload
+  API-->>App: uploadURL + attestationSignature + attestationPublicKey
 ```
 
-## Flow 3: Demo-Site List and Verification Summary
+## Sequence: Upload to On-chain Append
 
 ```mermaid
 sequenceDiagram
-    participant UI as demo-site UI
-    participant API as /api/list
-    participant S3 as AWS S3
-    participant H as Helius tx API
-    participant RPC as Solana RPC fallback
+  participant App as Expo App
+  participant S3 as S3
+  participant Wallet as Wallet
+  participant Chain as Program
 
-    UI->>API: GET /api/list
-    API->>S3: ListObjectsV2(prefix)
-    API->>H: address tx history lookup (if configured)
-    alt Helius unavailable or 429
-      API->>RPC: getSignaturesForAddress + getTransactions
-    end
-    API-->>API: decode record_photo_proof ix payloads
-    API-->>UI: items + proof summary + optional txLookupWarning
+  App->>S3: PUT image bytes (presigned URL)
+  S3-->>App: 200
+  App->>Wallet: sign tx (ed25519 ix + record_photo_proof)
+  Wallet-->>App: signed tx
+  App->>Chain: submit tx
+  Chain-->>Chain: verify attestation instruction and fields
+  Chain-->>Chain: transfer fee + append compressed leaf
+  Chain-->>App: tx signature
 ```
 
-## On-chain Record Payload (high level)
+## Cluster Model
 
-`record_photo_proof` binds:
+Current demo behavior supports split-cluster concerns:
 
-- `hash[32]`
-- `nonce(u64)`
-- `timestamp(i64)`
-- `h3_index(u64)`
-- `attestation_signature[64]`
+- Seeker verification RPC can be mainnet (`EXPO_PUBLIC_SEEKER_VERIFICATION_RPC_URL`)
+- Photo proof write flow uses selected app cluster/RPC
 
-Program verifies an `ed25519` instruction immediately before program instruction, requiring:
+This allows mainnet asset verification while writing proofs to devnet during development.
 
-- signer pubkey == attestation authority
-- signature bytes == args.attestation signature
-- signed message prefix == `photo-proof-attestation-v1`
-- message fields match owner/hash/nonce/timestamp/h3_index
+## Rotation Checklist
 
-## Rotation Notes
+When changing program ID or authorities, update all call sites in same change:
 
-When rotating program ID or authorities, update all callsites in the same change:
-
-- On-chain constants (`PROGRAM_FEE_AUTHORITY`, `ATTESTATION_AUTHORITY`)
-- SDK constants (`PHOTO_PROOF_COMPRESSED_PROGRAM_ID`, fee/attestation constants)
-- Infra defaults (`AttestationPublicKey` in CloudFormation and deploy script)
-- App/demo defaults and docs
-
-Do not commit private keys. Private attestation key is deploy-time secret only.
+- on-chain constants
+- SDK constants
+- infra template + deploy script defaults
+- app/demo env defaults
+- docs baseline values

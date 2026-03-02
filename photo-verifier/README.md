@@ -1,50 +1,49 @@
-# Welcome to your Expo app 👋
+# Photo Verifier App (Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile reference app for the photo verification flow.
 
-## Get started
+## What It Does
 
-1. Install dependencies
+- wallet sign-in and Seeker gating
+- camera capture and local BLAKE3 hashing
+- H3 location encoding (default resolution `7`)
+- presign attestation request
+- S3 upload
+- on-chain proof submit (compressed append route)
+- local gallery/history view
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run
 
 ```bash
-npm run reset-project
+pnpm install
+pnpm -C photo-verifier dev
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Useful Commands
 
-## Learn more
+```bash
+pnpm -C photo-verifier exec tsc --noEmit
+pnpm -C photo-verifier lint:check
+pnpm -C photo-verifier android
+pnpm -C photo-verifier ios
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Required App Config
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Set via env or `app.json` `expo.extra`:
 
-## Join the community
+- `EXPO_PUBLIC_S3_PRESIGN_ENDPOINT`
+- `EXPO_PUBLIC_S3_BUCKET`
+- `EXPO_PUBLIC_S3_BASE_PREFIX`
+- `EXPO_PUBLIC_SOLANA_RPC_URL`
+- `EXPO_PUBLIC_SEEKER_VERIFICATION_RPC_URL`
 
-Join our community of developers creating universal apps.
+Optional:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `EXPO_PUBLIC_H3_RESOLUTION` (default `7`)
+- `EXPO_PUBLIC_S3_CONTENT_TYPE` (default `image/jpeg`)
+
+## Notes
+
+- Seeker verification cluster can differ from proof write cluster.
+- Do not commit API keys or secrets in config values.

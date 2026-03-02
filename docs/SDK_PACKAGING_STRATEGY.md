@@ -1,55 +1,47 @@
 # SDK Packaging Strategy
 
-## Decision Summary
+## Decision
 
-We will maintain two npm packages:
+Maintain two published packages:
 
-1. `@photoverifier/sdk` (base package)
-2. `@photoverifier/seeker-sdk` (Seeker and React Native focused package)
+1. `@photoverifier/sdk` (full/canonical API)
+2. `@photoverifier/seeker-sdk` (focused wrapper for Seeker mobile flows)
 
-## Why Two Packages
+## Rationale
 
-### Problem
-
-A single package can work technically, but mobile integrators typically want a smaller, opinionated surface without scanning the full open-core API.
-
-### Chosen approach
-
-- Keep `@photoverifier/sdk` as the comprehensive API and source of truth.
-- Add `@photoverifier/seeker-sdk` as a focused wrapper that re-exports the high-frequency Seeker flow surface and adds ergonomic helpers.
-
-### Benefits
-
-- Better onboarding for hackathon/mobile integrators.
-- Clear boundary for Seeker-focused docs/examples.
-- No breaking change for existing `@photoverifier/sdk` users.
+- Existing integrators keep a stable full API.
+- Hackathon/mobile teams get a smaller, task-oriented surface.
+- Wrapper avoids duplicated protocol logic.
 
 ## Package Boundaries
 
 ## `@photoverifier/sdk`
 
-- Full API surface.
-- Core + blockchain + on-chain tx builders + presign parsing.
-- Backward-compatible for existing consumers.
+- Source of truth for:
+  - H3 helpers (`locationToH3Cell`, `h3CellToU64`)
+  - presign payload canonicalization/parsing
+  - on-chain transaction builders
+  - seeker detection/verification helpers
+- Includes broader open-core and blockchain exports.
 
 ## `@photoverifier/seeker-sdk`
 
-- Re-exports key mobile flow primitives from base SDK.
-- Adds helper APIs:
-- `createNonceU64`
-- `nonceToString`
-- `buildIntegrityPayload`
-- `canonicalizeIntegrityPayload`
-- `createIntegrityEnvelope`
+- Re-exports high-frequency symbols from base SDK.
+- Adds ergonomic helpers:
+  - `createNonceU64`
+  - `nonceToString`
+  - `buildIntegrityPayload`
+  - `createIntegrityEnvelope`
 
-## Release Implications
+## Versioning
 
-- Publish both packages from workspace.
-- Base SDK remains canonical for advanced usage.
-- Seeker SDK versions should track base SDK compatibility.
+- Keep seeker-sdk compatible with matching base SDK release.
+- Publish together for release candidates and stable tags.
 
-## Validation Checklist
+## Validation Before Publish
 
-- `pnpm --filter @photoverifier/sdk build`
-- `pnpm --filter @photoverifier/seeker-sdk build`
-- `pnpm --filter @photoverifier/seeker-sdk smoke:types`
+```bash
+pnpm -C packages/photoverifier-sdk build
+pnpm -C packages/photoverifier-seeker-sdk build
+pnpm -C packages/photoverifier-seeker-sdk smoke:types
+```

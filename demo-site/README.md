@@ -1,50 +1,42 @@
-# Citizen Science – Photo Verifier (Demo Site)
+# Photo Verifier Demo Site
 
-A Next.js app (Vercel-ready) that displays images from S3 grouped by Seeker mint. It shows hash, H3 cell, timestamp, and optional proof JSON and transaction link.
+Next.js site that lists uploaded photos and correlates them with on-chain `record_photo_proof` transactions.
 
-## Data layout
-- Keys: `photos/<SEEKER_MINT>/<PHOTO_HASH>.jpg`
-- Optional sidecar JSON: `photos/<SEEKER_MINT>/<PHOTO_HASH>.json`
+## Features
 
-JSON example:
-```json
-{
-  "payload": {
-    "hash": "<hex>",
-    "uri": "s3://...",
-    "timestamp": "2025-01-01T00:00:00.000Z",
-    "h3Cell": "8928308280fffff",
-    "h3Resolution": 9,
-    "owner": "<wallet>",
-    "seekerMint": "<mint>"
-  },
-  "signature": "<base64>"
-}
-```
+- list images from S3 prefix
+- decode proof metadata from transaction instructions
+- show verification summary (matched/unmatched)
+- fallback from Helius tx API to RPC scan when rate-limited
 
-## Environment variables
-Set in Vercel Project Settings (or `.env.local`).
+## Run
 
-- `S3_BUCKET` – e.g., `photoverifier`
-- `S3_REGION` – e.g., `us-east-1`
-- `S3_PREFIX` – default `photos/`
-- `S3_CDN_DOMAIN` – optional CloudFront domain (otherwise presigned GET)
-- `TX_INDEX_URL` – optional `{ [hashHex]: explorerUrl }` map
-- `RPC_URL` – Solana RPC endpoint. Default is `https://api.devnet.solana.com`. Do not commit secrets.
-
-Required AWS permissions for the Vercel runtime identity:
-- `s3:ListBucket` on the bucket
-- `s3:GetObject` on objects under the prefix
-
-## Local development
 ```bash
-pnpm i
-pnpm dev
-# open http://localhost:3000
+pnpm install
+pnpm -C demo-site dev
 ```
 
-## Deploy to Vercel
-- Create/import project from `demo-site`
-- Configure env vars above
-- Configure AWS credentials (OIDC or static keys)
-- Deploy
+## Environment Variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `S3_BUCKET` | Yes | S3 bucket containing image objects |
+| `S3_REGION` | No | S3 client region (default `us-east-1`) |
+| `S3_PREFIX` | No | Object prefix (default `photos/`) |
+| `S3_CDN_DOMAIN` | No | Optional CDN domain |
+| `RPC_URL` | No | Solana RPC for fallback tx scan |
+| `PROGRAM_ID` | No | Program ID used for instruction decoding |
+| `HELIUS_API_KEY` | No | Enables Helius tx index path |
+| `HELIUS_TX_API_BASE` | No | Override Helius tx API base |
+| `MAX_LIST_ITEMS` | No | Max objects to list |
+| `MAX_SIGNATURES` | No | Max signatures to scan |
+| `TX_PAGE_SIZE` | No | Tx page size |
+| `LIST_CACHE_TTL_MS` | No | List cache TTL |
+| `TX_CACHE_TTL_MS` | No | Tx cache TTL |
+
+## AWS Permissions
+
+Runtime identity needs:
+
+- `s3:ListBucket` on the target bucket
+- `s3:GetObject` on objects under configured prefix

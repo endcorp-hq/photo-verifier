@@ -1,17 +1,19 @@
 # Devnet Deploy and Smoke Test Runbook
 
-This runbook describes a fresh deploy of program + presign API and a minimal smoke validation.
+This runbook covers a full development deployment path for:
+
+- on-chain program + IDL
+- presign backend
+- mobile app + demo site validation
 
 ## Prerequisites
 
-- Solana CLI configured and funded for devnet.
-- Anchor CLI installed.
-- AWS CLI authenticated for target account.
-- `ATTESTATION_PRIVATE_KEY_B58` available at deploy time.
+- Solana CLI configured and funded on devnet
+- Anchor CLI installed
+- AWS CLI authenticated
+- `ATTESTATION_PRIVATE_KEY_B58` available at deploy time
 
 ## 1) Build and Deploy Program
-
-From repo root:
 
 ```bash
 cd on-chain/photo-proof-compressed
@@ -19,7 +21,7 @@ anchor build
 anchor deploy --provider.cluster devnet
 ```
 
-Confirm program:
+Confirm expected program:
 
 ```bash
 solana program show 3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu --url devnet
@@ -44,43 +46,47 @@ ATTESTATION_PRIVATE_KEY_B58=<base58-secret> \
 ./deploy.sh photoverifier-presign photoverifier '*' Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk
 ```
 
-Notes:
+The deploy script:
 
-- `deploy.sh` detects bucket region and passes it to CloudFormation.
-- This avoids S3 `PermanentRedirect` errors caused by wrong endpoint signing.
+- auto-detects S3 bucket region
+- configures S3 CORS
+- deploys CloudFormation stack
+- prints API endpoint and `/uploads` URL
 
-## 4) Confirm Lambda Runtime and Key Wiring
+## 4) Configure App
 
-```bash
-aws lambda get-function-configuration \
-  --region us-west-2 \
-  --function-name photoverifier-presign-PresignFunction-MpFXgnHuIyze \
-  --query '{Runtime:Runtime,BucketRegion:Environment.Variables.BUCKET_REGION,AttestationPublicKey:Environment.Variables.ATTESTATION_PUBLIC_KEY}' \
-  --output json
-```
+Set app config/env to deployed presign URL and target write RPC.
 
-Expected:
+Minimum values:
 
-- `Runtime` is `nodejs18.x`
-- `BucketRegion` matches bucket region (for `photoverifier`, `us-east-1`)
-- `AttestationPublicKey` is current public key
+- `EXPO_PUBLIC_S3_PRESIGN_ENDPOINT`
+- `EXPO_PUBLIC_S3_BUCKET`
+- `EXPO_PUBLIC_S3_BASE_PREFIX`
+- `EXPO_PUBLIC_SOLANA_RPC_URL`
+- `EXPO_PUBLIC_SEEKER_VERIFICATION_RPC_URL` (mainnet allowed)
 
-## 5) App Validation Path
+## 5) Smoke Test (Mobile)
 
-1. Launch app with `EXPO_PUBLIC_S3_PRESIGN_ENDPOINT` pointing to deployed `/uploads`.
-2. Capture a photo and submit.
-3. Verify upload succeeds and tx signature is returned.
-4. Verify demo-site shows image and on-chain match.
+1. Open app and connect wallet.
+2. Ensure Seeker verification passes.
+3. Capture photo.
+4. Submit proof.
+5. Confirm success notice and returned transaction signature.
 
-## 6) Optional CLI Checks
+## 6) Smoke Test (Demo Site)
 
-Check current tree config account exists:
+1. Load `demo-site`.
+2. Verify new image appears in list.
+3. Verify proof metadata includes `hashHex`, `h3Cell`, signature/tx link.
+4. Confirm verification summary updates.
+
+## 7) Optional Program State Check
 
 ```bash
 node - <<'NODE'
 const { Connection, PublicKey } = require('@solana/web3.js');
-(async()=>{
-  const conn = new Connection('https://api.devnet.solana.com','confirmed');
+(async () => {
+  const conn = new Connection('https://api.devnet.solana.com', 'confirmed');
   const pid = new PublicKey('3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu');
   const [treeConfig] = PublicKey.findProgramAddressSync([Buffer.from('tree_config')], pid);
   const info = await conn.getAccountInfo(treeConfig);
@@ -89,9 +95,10 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 NODE
 ```
 
-## 7) Post-Deploy Checklist
+## Post-Deploy Checklist
 
-- Program deploy succeeded on expected ID.
-- IDL upgraded for same ID.
-- Presign endpoint returns `attestationSignature` and `attestationPublicKey`.
-- App can complete upload + on-chain append on devnet.
+- Program deploy succeeded on expected ID
+- IDL upgraded for same ID
+- Presign response includes `attestationSignature`
+- App upload + on-chain append succeeds
+- Demo site displays corresponding proof data

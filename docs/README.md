@@ -1,30 +1,27 @@
-# Photo Verifier Documentation
+# Documentation Index
 
-This is the entrypoint for the current devnet architecture and operations.
+This folder documents the current photo verification stack and operations.
 
-## Start Here
+## Core Docs
 
-- [Architecture and Data Flow](./ARCHITECTURE.md)
-- [Configuration Reference](./CONFIGURATION.md)
-- [Devnet Deploy and Smoke Test Runbook](./DEVNET_RUNBOOK.md)
-- [Troubleshooting](./TROUBLESHOOTING.md)
-- [SDK API Reference](./API.md)
-- [Licensing](./LICENSING.md)
+- [Architecture](./ARCHITECTURE.md): components, data flow, trust boundaries, wire diagrams
+- [Configuration](./CONFIGURATION.md): app/demo/backend environment variables
+- [Devnet Runbook](./DEVNET_RUNBOOK.md): deploy and smoke test steps
+- [Troubleshooting](./TROUBLESHOOTING.md): known failures and fixes
+- [API](./API.md): `@photoverifier/sdk` and `@photoverifier/seeker-sdk` surfaces
+
+## SDK/Product Docs
+
+- [SDK Migration](./SDK_MIGRATION.md)
 - [SDK Packaging Strategy](./SDK_PACKAGING_STRATEGY.md)
-- [SDK Migration Guide](./SDK_MIGRATION.md)
 - [NPM Release Workflow](./NPM_RELEASE_WORKFLOW.md)
+- [Licensing](./LICENSING.md)
 
-## Recommended Reading Order
-
-1. Architecture and Data Flow
-2. Configuration Reference
-3. Devnet Runbook
-4. Troubleshooting
-
-## Current Devnet Baseline
+## Current Baseline (March 2, 2026)
 
 - Program ID: `3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu`
 - Presign endpoint: `https://yqc2akkjn0.execute-api.us-west-2.amazonaws.com/uploads`
-- Default attestation public key: `Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk`
+- Attestation pubkey: `Ga6SxqKLPTzrc4pykqrawSi9pvz3ZGhAdnZSBDKKioYk`
+- Mobile default H3 resolution: `7`
 
-Treat these as environment-specific values. Do not hardcode secrets in repo files.
+Do not commit private keys, mnemonics, or RPC API keys.

@@ -1,10 +1,13 @@
 # SDK Migration Guide
 
-## Overview
+Use this when moving older app code to the current H3 + attestation flow.
 
-If you are currently importing from `@photoverifier/sdk`, you can keep doing so.
+## Summary
 
-If you want a Seeker-first React Native integration path, move to `@photoverifier/seeker-sdk` for day-to-day app flow imports.
+- Keep using `@photoverifier/sdk` for full surface.
+- Use `@photoverifier/seeker-sdk` for a narrower Seeker-focused app surface.
+- Remove custom/local integrity canonicalizers; use SDK helper.
+- Remove direct `h3-js` usage in React Native; use SDK H3 helpers.
 
 ## Install
 
@@ -12,16 +15,16 @@ If you want a Seeker-first React Native integration path, move to `@photoverifie
 npm install @photoverifier/seeker-sdk
 ```
 
-## Common Import Mapping
+## Common Mapping
 
-| Existing import | Seeker import |
+| Previous pattern | Current pattern |
 |---|---|
-| `@photoverifier/sdk` `verifySeeker` | `@photoverifier/seeker-sdk` `verifySeeker` |
-| `@photoverifier/sdk` `buildRecordPhotoProofTransaction` | `@photoverifier/seeker-sdk` `buildRecordPhotoProofTransaction` |
-| local integrity helpers | `@photoverifier/seeker-sdk` `buildIntegrityPayload`, `createIntegrityEnvelope` |
-| manual nonce assembly | `@photoverifier/seeker-sdk` `createNonceU64`, `nonceToString` |
+| local `canonicalizeIntegrityPayload` function | `canonicalizeIntegrityPayload` from SDK |
+| direct `h3-js` import in mobile app | `locationToH3Cell` from SDK |
+| manual nonce bit packing | `createNonceU64` + `nonceToString` |
+| bespoke presign parsing | `requestAttestedPresignedPut` + `parseAttestedPresignResponse` |
 
-## Example (Seeker Flow)
+## Example Migration
 
 ```ts
 import {
@@ -29,15 +32,18 @@ import {
   nonceToString,
   buildIntegrityPayload,
   createIntegrityEnvelope,
+  locationToH3Cell,
   requestAttestedPresignedPut,
   buildRecordPhotoProofTransaction,
 } from '@photoverifier/seeker-sdk';
 
+const h3Cell = locationToH3Cell({ latitude, longitude }, 7);
 const nonce = createNonceU64();
+
 const payload = buildIntegrityPayload({
   hashHex,
   h3Cell,
-  h3Resolution: 9,
+  h3Resolution: 7,
   timestampSec,
   wallet,
   nonce: nonceToString(nonce),
@@ -45,14 +51,14 @@ const payload = buildIntegrityPayload({
   blockhash,
 });
 
-const envelope = await createIntegrityEnvelope(payload, signMessage);
+const integrity = await createIntegrityEnvelope(payload, signMessage);
 const presign = await requestAttestedPresignedPut(presignEndpoint, {
   key,
   contentType: 'image/jpeg',
-  integrity: envelope,
+  integrity,
 });
 
-const tx = await buildRecordPhotoProofTransaction({
+await buildRecordPhotoProofTransaction({
   connection,
   owner,
   hash32,
@@ -65,6 +71,6 @@ const tx = await buildRecordPhotoProofTransaction({
 
 ## Compatibility Notes
 
-- Seeker SDK is a wrapper package, not an independent protocol implementation.
-- Underlying constants/program IDs come from the base SDK.
-- Keep versions aligned across both packages.
+- `@photoverifier/seeker-sdk` re-exports from `@photoverifier/sdk`; keep versions aligned.
+- Current app default H3 resolution is `7`.
+- The flow does not include legacy latitude/longitude payload compatibility.

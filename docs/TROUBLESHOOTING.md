@@ -1,119 +1,133 @@
 # Troubleshooting
 
-## 1) Missing Attestation in Presign Response
+## 1) Hermes Crash: `Unknown encoding: utf-16le`
 
 ### Symptom
 
-App shows:
+React Native app crashes at startup with:
 
-- `Server update required: presign API must return attestation signature`
-- or SDK `PRESIGN_MISSING_ATTESTATION_SIGNATURE`
+`RangeError: Unknown encoding: utf-16le (normalized: utf-16le), js engine: hermes`
 
 ### Cause
 
-Backend is old or misconfigured and does not include `attestationSignature` in `/uploads` response.
+`h3-js` browser build initializes `TextDecoder('utf-16le')`, which Hermes does not support.
 
 ### Fix
 
-- Redeploy presign API with current `infra/presign-api.yaml`.
-- Ensure `ATTESTATION_PRIVATE_KEY_B58` is supplied at deploy time.
-- Confirm Lambda env includes `ATTESTATION_PUBLIC_KEY`.
+- Use SDK H3 helpers backed by `h3-reactnative`.
+- Remove direct `h3-js` imports from app code.
+- Rebuild app bundle.
 
-## 2) S3 Upload Fails With 301 PermanentRedirect
+## 2) Router Warning: missing default export for camera route
 
 ### Symptom
 
-`S3 upload failed (301)` with `PermanentRedirect` and endpoint mismatch.
+Expo Router warns:
+
+`Route "./(tabs)/camera/index.tsx" is missing the required default export.`
 
 ### Cause
 
-Presigned URL was signed for wrong region endpoint.
+Commonly a downstream effect of module crash during route import (for example the Hermes H3 crash above).
 
 ### Fix
 
-- Use current `infra/deploy.sh` (auto-detects bucket region).
-- Confirm Lambda has correct `BUCKET_REGION`.
-- For `us-east-1` buckets, host should be `s3.amazonaws.com`.
+- Resolve import-time crash first.
+- Confirm `export default` exists in route file.
 
-## 3) Demo-Site Slow/Degraded With RPC 429
+## 3) Missing Attestation in Presign Response
 
 ### Symptom
 
-Logs show repeated `429 Too Many Requests`, delayed `/api/list`, or `tx_lookup_unavailable`.
+- `PRESIGN_MISSING_ATTESTATION_SIGNATURE`
+- UI shows server update/attestation error
 
 ### Cause
 
-Tx index lookup rate-limited (RPC or Helius).
+Presign backend is outdated or misconfigured.
 
 ### Fix
 
-- Configure `HELIUS_API_KEY` for higher-capacity tx indexing.
-- Tune `MAX_SIGNATURES`, `TX_PAGE_SIZE`, `TX_CACHE_TTL_MS`.
-- Use cache and graceful fallback behavior already implemented in `/api/list`.
+- Redeploy presign stack with current template.
+- Ensure `ATTESTATION_PRIVATE_KEY_B58` and `ATTESTATION_PUBLIC_KEY` are set correctly.
 
-## 4) On-chain Submit Fails: Invalid Attestation
+## 4) S3 Upload Fails With 301 `PermanentRedirect`
 
 ### Symptom
 
-Transaction fails on `InvalidAttestationInstruction`.
+`S3 upload failed (301)` and endpoint mismatch XML error.
+
+### Cause
+
+Presigned URL signed for wrong S3 region endpoint.
+
+### Fix
+
+- Use `infra/deploy.sh` (bucket region auto-detection).
+- Verify Lambda `BUCKET_REGION` matches actual bucket region.
+
+## 5) Wallet Authorization Fails Intermittently
+
+### Symptom
+
+`authorization request failed` from mobile wallet adapter.
+
+### Cause
+
+Session interruptions or stale wallet authorization context.
+
+### Fix
+
+- Reconnect wallet and retry.
+- Keep retry/reconnect guard in app for `signMessage` and `signAndSendTransaction`.
+
+## 6) On-chain Submit Fails: `InvalidAttestationInstruction`
+
+### Symptom
+
+Transaction simulation/program logs show attestation instruction error.
 
 ### Cause
 
 Any of:
 
-- Attestation signed by wrong key.
-- Message fields do not exactly match tx args.
-- Missing/incorrect `ed25519` pre-instruction ordering.
+- wrong attestation key
+- signed message mismatch (owner/hash/nonce/timestamp/h3)
+- missing/incorrect ed25519 pre-instruction ordering
 
 ### Fix
 
-- Ensure SDK tx builder inserts `Ed25519Program` instruction immediately before `record_photo_proof`.
-- Ensure payload includes exact `owner/hash/nonce/timestamp/h3Cell` used in tx args.
-- Ensure on-chain and backend share same attestation public key.
+- Use SDK transaction builder.
+- Verify payload canonicalization is consistent between app and server.
+- Verify backend public key matches on-chain `ATTESTATION_AUTHORITY`.
 
-## 5) Tree Initialization / Authority Errors
+## 7) Demo Site Slow or Degraded With 429
 
 ### Symptom
 
-Errors during first write or `initialize_tree` authority checks.
+Repeated `429 Too Many Requests`, delayed `/api/list`, or warning `tx_lookup_unavailable`.
 
 ### Cause
 
-Fee authority constant and signer wallet mismatch.
+Rate-limited tx indexing path (RPC and/or Helius).
 
 ### Fix
 
-- Verify `PROGRAM_FEE_AUTHORITY` in on-chain code and SDK constant align with intended wallet.
-- Deploy updated program and IDL when authority constants change.
+- Configure `HELIUS_API_KEY`.
+- Tune `MAX_SIGNATURES`, `TX_PAGE_SIZE`, cache TTL variables.
+- Keep fallback behavior enabled.
 
-## 6) Program/IDL Mismatch
-
-### Symptom
-
-Decoded instructions/accounts look wrong in tools or demo-site.
-
-### Cause
-
-IDL not upgraded for current program build.
-
-### Fix
-
-Run:
-
-```bash
-cd on-chain/photo-proof-compressed
-anchor idl upgrade --provider.cluster devnet --filepath target/idl/photo_proof_compressed.json 3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu
-```
-
-## 7) Seeker Verification Confusion (Mainnet asset, Devnet writes)
+## 8) Mainnet Seeker Token + Devnet Writes Confusion
 
 ### Symptom
 
-User has Seeker token on mainnet but app writes on devnet.
+User has Seeker token on mainnet but app writes proofs to devnet.
 
-### Intended behavior
+### Intended Behavior
 
-- Seeker ownership is verified against `EXPO_PUBLIC_SEEKER_VERIFICATION_RPC_URL` (mainnet).
-- Photo proof transactions are sent to selected write cluster (`EXPO_PUBLIC_SOLANA_RPC_URL`, currently devnet).
+This split is valid for development:
 
-This split is expected for current demo architecture.
+- verification RPC checks Seeker ownership on mainnet
+- write RPC submits proofs to selected devnet/testnet cluster
+
+Configure explicitly via env vars to avoid ambiguity.

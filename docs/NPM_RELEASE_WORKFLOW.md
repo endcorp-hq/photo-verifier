@@ -1,54 +1,35 @@
 # NPM Release Workflow
 
-## Scope
-
-This workflow covers npm release readiness and publish execution for:
+## Packages
 
 - `@photoverifier/sdk`
 - `@photoverifier/seeker-sdk`
 
-## Version and Tag Policy
+## Release Policy
 
 - Use semver.
-- Use `next` dist-tag for pre-release validation (`-rc`, `-beta`).
-- Use `latest` only after app/demo validation on target cluster.
-
-Recommended progression:
-
-1. `x.y.z-rc.1` published with `--tag next`
-2. Integrator validation pass
-3. Promote stable `x.y.z` to `latest`
+- Use `next` for pre-release validation (`-rc`, `-beta`).
+- Promote to `latest` after app/demo validation.
 
 ## Preconditions
 
-- `NPM_TOKEN` configured for publish environment.
-- 2FA requirements satisfied for account/org policy.
-- Branch contains merged changes for SDK package updates.
-- Release notes prepared.
+- `NPM_TOKEN` available in publish environment.
+- 2FA requirements satisfied.
+- Branch includes merged package changes.
+- Release notes/changelog prepared.
 
-## Local Validation Commands
+## Validation Commands
 
 From repo root:
 
 ```bash
-pnpm install --no-frozen-lockfile
-pnpm --filter @photoverifier/sdk build
-pnpm --filter @photoverifier/seeker-sdk build
-pnpm --filter @photoverifier/seeker-sdk smoke:types
+pnpm install
+pnpm -C packages/photoverifier-sdk build
+pnpm -C packages/photoverifier-seeker-sdk build
+pnpm -C packages/photoverifier-seeker-sdk smoke:types
 pnpm release:pack-check
 pnpm release:dry-run
 ```
-
-## What `release:pack-check` enforces
-
-- Both packages build before pack.
-- `npm pack --dry-run --json` output is inspected.
-- Tarball is blocked if it contains suspicious files such as:
-- `node_modules/`
-- `.env*`
-- `*secret*`
-- `id.json`
-- `*.pem` or `*.key`
 
 ## Publish Commands
 
@@ -72,12 +53,8 @@ cd ../photoverifier-seeker-sdk
 npm publish --access public --tag next
 ```
 
-## CI Release Automation
+## Rollback
 
-`/.github/workflows/release.yml` now builds both packages, runs pack checks, and publishes both SDK packages on tag pushes.
-
-## Rollback Strategy
-
-- If package content is wrong, deprecate bad version immediately.
-- Publish patched version (`x.y.(z+1)`), do not overwrite an existing version.
-- Communicate required upgrade version in changelog/README.
+- Do not overwrite versions.
+- Deprecate bad version immediately.
+- Publish patch version (`x.y.(z+1)`).
