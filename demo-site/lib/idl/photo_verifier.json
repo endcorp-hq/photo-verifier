@@ -1,38 +1,355 @@
 {
-  "version": "0.1.0",
-  "name": "photo_verifier",
+  "address": "3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu",
+  "metadata": {
+    "name": "photo_proof_compressed",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Compressed accounts program for photo proof verification"
+  },
   "instructions": [
     {
-      "name": "createPhotoData",
+      "name": "initialize_tree",
+      "discriminator": [
+        211,
+        231,
+        181,
+        174,
+        40,
+        77,
+        227,
+        51
+      ],
       "accounts": [
-        { "name": "payer", "isMut": true, "isSigner": true },
-        { "name": "photoData", "isMut": true, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "tree_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "tree_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "account_compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "record_photo_proof",
+      "discriminator": [
+        37,
+        64,
+        207,
+        51,
+        192,
+        223,
+        189,
+        166
+      ],
+      "accounts": [
+        {
+          "name": "tree_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "tree_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "instructions",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "account_compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
       ],
       "args": [
-        { "name": "hash", "type": { "array": ["u8", 32] } },
-        { "name": "s3Uri", "type": "string" },
-        { "name": "location", "type": "string" },
-        { "name": "timestamp", "type": "string" }
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RecordPhotoProofArgs"
+            }
+          }
+        }
       ]
     }
   ],
   "accounts": [
     {
-      "name": "PhotoData",
+      "name": "TreeConfig",
+      "discriminator": [
+        122,
+        245,
+        175,
+        248,
+        171,
+        34,
+        0,
+        207
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "TreeFull",
+      "msg": "Tree is at capacity"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidTimestamp",
+      "msg": "Invalid timestamp"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidCoordinates",
+      "msg": "Invalid coordinates"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidTreeAccount",
+      "msg": "Tree account mismatch"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidAuthority",
+      "msg": "Invalid authority"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidFeeRecipient",
+      "msg": "Invalid fee recipient"
+    },
+    {
+      "code": 6006,
+      "name": "MissingAttestationInstruction",
+      "msg": "Missing attestation instruction"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidAttestationInstruction",
+      "msg": "Invalid attestation instruction"
+    }
+  ],
+  "types": [
+    {
+      "name": "RecordPhotoProofArgs",
       "type": {
         "kind": "struct",
         "fields": [
-          { "name": "payer", "type": "publicKey" },
-          { "name": "hash", "type": { "array": ["u8", 32] } },
-          { "name": "s3Uri", "type": "string" },
-          { "name": "location", "type": "string" },
-          { "name": "timestamp", "type": "string" },
-          { "name": "bump", "type": "u8" }
+          {
+            "name": "hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "latitude",
+            "type": "i64"
+          },
+          {
+            "name": "longitude",
+            "type": "i64"
+          },
+          {
+            "name": "attestation_signature",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TreeConfig",
+      "docs": [
+        "Configuration for a proof tree"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "tree_authority_bump",
+            "type": "u8"
+          },
+          {
+            "name": "merkle_tree",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_depth",
+            "type": "u32"
+          },
+          {
+            "name": "max_buffer_size",
+            "type": "u32"
+          },
+          {
+            "name": "max_capacity",
+            "type": "u64"
+          },
+          {
+            "name": "current_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
         ]
       }
     }
-  ],
-  "metadata": { "address": "8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz" }
+  ]
 }
-

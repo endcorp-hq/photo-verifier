@@ -29,13 +29,13 @@ type PhotoItem = {
 type ApiResponse = {
   items: PhotoItem[];
   proofs?: Array<{
-    proofAccount: string;
+    signature: string;
     hashHex: string;
-    owner: string;
+    payer: string;
     timestamp: string | null;
     location: string;
     nonce: string;
-    leafIndex: number;
+    url: string;
   }>;
   summary?: {
     totalImages: number;
@@ -201,9 +201,9 @@ export default function Gallery() {
           <div><strong>Images</strong>: {data?.summary?.totalImages ?? data?.items.length ?? 0}</div>
           <div><strong>On-chain matched</strong>: {data?.summary?.onChainMatchedImages ?? 0}</div>
           <div><strong>Unmatched images</strong>: {data?.summary?.unmatchedImages ?? 0}</div>
-          <div><strong>Proof accounts</strong>: {data?.summary?.totalProofAccounts ?? data?.proofs?.length ?? 0}</div>
-          <div><strong>Proofs with image</strong>: {data?.summary?.proofAccountsWithImage ?? 0}</div>
-          <div><strong>Orphaned proofs</strong>: {data?.summary?.orphanedProofAccounts ?? 0}</div>
+          <div><strong>Proof txs</strong>: {data?.summary?.totalProofAccounts ?? data?.proofs?.length ?? 0}</div>
+          <div><strong>Proof txs with image</strong>: {data?.summary?.proofAccountsWithImage ?? 0}</div>
+          <div><strong>Orphaned proof txs</strong>: {data?.summary?.orphanedProofAccounts ?? 0}</div>
           <div>
             <strong>Image hash checks</strong>: {hashChecksStarted ? `${hashCheckProgress.checked}/${hashCheckProgress.total}` : "not started"}
           </div>
@@ -249,7 +249,7 @@ export default function Gallery() {
                   <div className="row"><strong>Timestamp</strong>: <span className="timestamp">{item.timestamp || "—"}</span></div>
                   <div className="row"><strong>Owner</strong>: <span className="owner">{formatOwner(item.owner)}</span></div>
                   {item.signature ? (
-                    <div className="row"><strong>Envelope Sig</strong>: <span className="signature">{item.signature.slice(0, 16) + "…"}</span></div>
+                    <div className="row"><strong>Tx Sig</strong>: <span className="signature">{item.signature.slice(0, 16) + "…"}</span></div>
                   ) : null}
                   <div className="row"><strong>Nonce</strong>: <span className="nonce">{item.nonce ?? "—"}</span></div>
                   <div className="row"><strong>Leaf Index</strong>: <span className="leaf-index">{item.leafIndex ?? "—"}</span></div>
@@ -283,17 +283,16 @@ export default function Gallery() {
       ))}
       {!!data?.proofs?.length && (
         <section className="group">
-          <h2 className="group-title">On-chain Proof Accounts</h2>
+          <h2 className="group-title">On-chain Proof Transactions</h2>
           <div className="proof-list">
             {data.proofs.slice(0, 50).map((proof) => (
-              <div className="proof-item" key={proof.proofAccount}>
-                <div><strong>Account</strong>: {formatHash(proof.proofAccount)}</div>
+              <div className="proof-item" key={proof.signature}>
+                <div><strong>Tx</strong>: <a href={proof.url} target="_blank" rel="noreferrer noopener">{formatHash(proof.signature)}</a></div>
                 <div><strong>Hash</strong>: {formatHash(proof.hashHex)}</div>
-                <div><strong>Owner</strong>: {formatHash(proof.owner)}</div>
+                <div><strong>Owner</strong>: {formatHash(proof.payer)}</div>
                 <div><strong>Timestamp</strong>: {proof.timestamp ?? "—"}</div>
                 <div><strong>Location</strong>: {proof.location}</div>
                 <div><strong>Nonce</strong>: {proof.nonce}</div>
-                <div><strong>Leaf</strong>: {proof.leafIndex}</div>
               </div>
             ))}
           </div>
