@@ -30,7 +30,7 @@ import { blake3 } from '@noble/hashes/blake3';
 import { bytesToHex } from '@noble/hashes/utils';
 
 // Program constants
-export const PHOTO_PROOF_PROGRAM_ID = new PublicKey('J8U2PEf8ZaXcG5Q7xPCob92qFA8H8LWj1j3xiuKA6QEt');
+export const PHOTO_PROOF_PROGRAM_ID = new PublicKey('8bQahCyQ6pLf5bFgj21kSd19mu1KZ2RfS7wALf35QyXz');
 export const BUBBLEGUM_PROGRAM_ID = new PublicKey('DTNhearU7zbKfR4XSzWUGY4TFUgb6s86GY6T1aWPALEP');
 
 /**

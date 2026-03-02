@@ -17,7 +17,7 @@
   "peerDependencies": {
     "expo": ">=51",
     "expo-camera": "*",
-    "expo-file-system": "*",
+    "expo-file-system": "~18.1.11",
     "expo-location": "*",
     "expo-media-library": "*",
     "react": ">=18",

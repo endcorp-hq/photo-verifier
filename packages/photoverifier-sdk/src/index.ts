@@ -99,6 +99,11 @@ export {
 
 // On-chain transaction helpers - from modules/onchain
 export {
+  buildRecordPhotoProofTransaction,
+  buildRecordPhotoProofInstruction,
+  buildInitializeTreeInstruction,
+  derivePhotoProofPda,
+  PHOTO_PROOF_COMPRESSED_PROGRAM_ID,
   buildCreatePhotoDataTransaction,
   derivePhotoDataPda,
   buildCreatePhotoDataInstruction,
@@ -109,4 +114,3 @@ export {
   PHOTO_VERIFIER_PROGRAM_ID,
 
 } from './modules/onchain';
-
