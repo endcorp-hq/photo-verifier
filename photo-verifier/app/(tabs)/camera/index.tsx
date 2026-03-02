@@ -1,5 +1,4 @@
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { useRef, useState } from 'react';
 import { Button, StyleSheet, Text, TouchableOpacity, View, Linking, Image, ScrollView } from 'react-native';
@@ -9,8 +8,10 @@ import { Buffer } from 'buffer'
 import { useConnection } from '@/components/solana/solana-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
-import { blake3HexFromBase64, captureAndPersist, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, isSeekerDevice, verifySeeker, buildCreatePhotoDataTransaction, derivePhotoDataPda } from '@photoverifier/sdk'
+import { blake3HexFromBytes, getCurrentLocation, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, verifySeeker, buildRecordPhotoProofTransaction } from '@photoverifier/sdk'
 import { requestPresignedPut } from '@/utils/s3'
+import { canonicalizeIntegrityPayload } from '@/utils/integrity'
+import { Base64 } from 'js-base64'
 import * as Location from 'expo-location'
 
 
@@ -18,21 +19,22 @@ import * as Location from 'expo-location'
 export default function TabCameraScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
-  const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
   const [isReady, setIsReady] = useState(false);
   const [isTaking, setIsTaking] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [preHashHex, setPreHashHex] = useState<string | null>(null);
-  const [postHashHex, setPostHashHex] = useState<string | null>(null);
-  const [hashesMatch, setHashesMatch] = useState<boolean | null>(null);
-  const [timestamp, setTimestamp] = useState<string | null>(null);
+  const [photoHashHex, setPhotoHashHex] = useState<string | null>(null);
+  const [timestampIso, setTimestampIso] = useState<string | null>(null);
+  const [captureTimestampSec, setCaptureTimestampSec] = useState<number | null>(null);
+  const [captureSlot, setCaptureSlot] = useState<number | null>(null);
+  const [captureBlockhash, setCaptureBlockhash] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState<boolean>(false);
   const [locationValue, setLocationValue] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [seekerLoading, setSeekerLoading] = useState<boolean>(false);
   const [seekerMintValue, setSeekerMintValue] = useState<string | null>(null);
+  const photoBytesRef = useRef<Uint8Array | null>(null);
   const cameraRef = useRef<any>(null);
-  const { account, signAndSendTransaction } = useWalletUi()
+  const { account, signAndSendTransaction, signMessage } = useWalletUi()
   const connection = useConnection()
   const { selectedCluster } = useCluster()
 
@@ -104,30 +106,37 @@ export default function TabCameraScreen() {
   const handleTakePicture = async () => {
     if (!isReady || isTaking) return;
     try {
-      // Ensure we can save to the media library
-      if (!mediaPermission?.granted) {
-        const result = await requestMediaPermission();
-        if (!result?.granted) {
-          return;
-        }
-      }
-
-      // this is where we start writing image to the media library
       setIsTaking(true);
-      const { tempUri, assetUri } = await captureAndPersist(cameraRef)
+      const captured = await cameraRef.current?.takePictureAsync({
+        base64: true,
+        skipProcessing: true,
+      } as any);
+      if (!captured?.uri) throw new Error('Unable to capture photo');
 
-      // 1) Read bytes BEFORE saving to gallery and compute hash
-      const preBase64 = await FileSystem.readAsStringAsync(tempUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const preHex = blake3HexFromBase64(preBase64)
-      setPreHashHex(preHex)
-      const now = new Date().toISOString()
-      setTimestamp(now)
+      setPreviewUri(captured.uri)
+      setIsPreviewing(true)
 
-      // Begin resolving device location and Seeker NFT in parallel while we continue
-      let computedLocation: { latitude: number; longitude: number; accuracy?: number } | null = null
-      let computedSeekerMint: string | null = null
+      const base64 =
+        typeof captured.base64 === 'string'
+          ? captured.base64
+          : await FileSystem.readAsStringAsync(captured.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+      const bytes = Uint8Array.from(Buffer.from(base64, 'base64'))
+      photoBytesRef.current = bytes
+      setPhotoHashHex(blake3HexFromBytes(bytes))
+
+      const blockAnchorPromise: Promise<{ slot: number; blockhash: string; timestampSec: number | null } | null> = (async () => {
+        try {
+          const latest = await connection.getLatestBlockhashAndContext()
+          const slot = latest.context.slot
+          const blockhash = latest.value.blockhash
+          const timestampSec = await connection.getBlockTime(slot)
+          return { slot, blockhash, timestampSec }
+        } catch {
+          return null
+        }
+      })()
 
       const canUseLocation = await ensureForegroundLocationPermission()
       setLocationLoading(true)
@@ -140,53 +149,39 @@ export default function TabCameraScreen() {
           if (!ownerStr) {
             return null
           }
-          const res = await verifySeeker({ walletAddress: ownerStr, rpcUrl: AppConfig.rpc.url })
+          const res = await verifySeeker({
+            walletAddress: ownerStr,
+            rpcUrl: AppConfig.seeker.verificationRpcUrl,
+          })
           return res.isVerified ? res.mint : null
         } catch { return null }
 
       })()
 
-      // (We will await these promises after computing the post-save hash)
+      Promise.allSettled([locationPromise, seekerPromise, blockAnchorPromise])
+        .then(([locRes, seekerRes, blockRes]) => {
+          const computedLocation = locRes.status === 'fulfilled' ? locRes.value : null
+          const computedSeekerMint = seekerRes.status === 'fulfilled' ? seekerRes.value : null
+          const blockAnchor = blockRes.status === 'fulfilled' ? blockRes.value : null
 
-      // 2) Save to gallery and get asset local URI
-      const localUri = assetUri;
-      if (!localUri) {
-        throw new Error('Unable to resolve saved asset localUri');
-      }
-      // Enter preview mode immediately with the saved local URI
-      setPreviewUri(localUri)
-      setIsPreviewing(true)
-
-      // 3) Read bytes AFTER saving to gallery and compute hash
-      const postBase64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const postHex = blake3HexFromBase64(postBase64)
-      setPostHashHex(postHex)
-
-      // 4) Compare
-      const ok = preHex === postHex;
-      setHashesMatch(ok)
-
-      // Await background lookups and update progressive states
-      try {
-        const [locRes, seekerRes] = await Promise.allSettled([locationPromise, seekerPromise])
-        computedLocation = locRes.status === 'fulfilled' ? locRes.value : null
-        setLocationValue(computedLocation)
-        setLocationLoading(false)
-        computedSeekerMint = seekerRes.status === 'fulfilled' ? seekerRes.value : null
-        // Devnet fallback for Seeker Genesis Token when verification isn't available
-        if (!computedSeekerMint && selectedCluster.network === 'devnet') {
-          computedSeekerMint = '4mjmWDfmoxZJchYhyEimQa5RtXwoN2AUiABPaCQ9Nmii'
-        }
-        setSeekerMintValue(computedSeekerMint)
-        setSeekerLoading(false)
-      } catch {
-        setLocationLoading(false)
-        setSeekerLoading(false)
-      }
-
-      // Defer upload and proof submission to explicit user action in preview UI
+          setLocationValue(computedLocation)
+          setLocationLoading(false)
+          setSeekerMintValue(computedSeekerMint)
+          setSeekerLoading(false)
+          if (blockAnchor?.slot != null) setCaptureSlot(blockAnchor.slot)
+          if (blockAnchor?.blockhash) setCaptureBlockhash(blockAnchor.blockhash)
+          if (typeof blockAnchor?.timestampSec === 'number') {
+            setCaptureTimestampSec(blockAnchor.timestampSec)
+            setTimestampIso(new Date(blockAnchor.timestampSec * 1000).toISOString())
+          } else {
+            setCaptureTimestampSec(null)
+            setTimestampIso(null)
+          }
+        })
+        .catch(() => {
+          setLocationLoading(false)
+          setSeekerLoading(false)
+        })
     } catch (e: any) {
       Snackbar.show({
         text: `Error: ${e?.message ?? 'Unknown error'}`,
@@ -199,102 +194,181 @@ export default function TabCameraScreen() {
     }
   };
 
+  const ensureSeekerMint = async (): Promise<string | null> => {
+    if (seekerMintValue) return seekerMintValue
+    try {
+      const ownerStr = account?.publicKey?.toString()
+      if (!ownerStr) return null
+      setSeekerLoading(true)
+      const res = await verifySeeker({
+        walletAddress: ownerStr,
+        rpcUrl: AppConfig.seeker.verificationRpcUrl,
+      })
+      const mint = res.isVerified ? res.mint : null
+      setSeekerMintValue(mint)
+      return mint
+    } catch {
+      return null
+    } finally {
+      setSeekerLoading(false)
+    }
+  }
+
+  const ensureLocation = async (): Promise<{ latitude: number; longitude: number; accuracy?: number } | null> => {
+    if (locationValue) return locationValue
+    const canUseLocation = await ensureForegroundLocationPermission()
+    if (!canUseLocation) return null
+    try {
+      setLocationLoading(true)
+      const current = await getCurrentLocation()
+      setLocationValue(current)
+      return current
+    } catch {
+      return null
+    } finally {
+      setLocationLoading(false)
+    }
+  }
+
+  const ensureBlockAnchor = async (): Promise<{ slot: number; blockhash: string; timestampSec: number }> => {
+    if (captureSlot != null && captureBlockhash && captureTimestampSec != null) {
+      return { slot: captureSlot, blockhash: captureBlockhash, timestampSec: captureTimestampSec }
+    }
+    const latest = await connection.getLatestBlockhashAndContext()
+    const slot = latest.context.slot
+    const blockhash = latest.value.blockhash
+    const timestampSec = await connection.getBlockTime(slot)
+    if (timestampSec == null) throw new Error('Failed to resolve chain timestamp for capture')
+    setCaptureSlot(slot)
+    setCaptureBlockhash(blockhash)
+    setCaptureTimestampSec(timestampSec)
+    setTimestampIso(new Date(timestampSec * 1000).toISOString())
+    return { slot, blockhash, timestampSec }
+  }
+
   const handleDiscard = () => {
     setIsPreviewing(false)
     setPreviewUri(null)
-    setPreHashHex(null)
-    setPostHashHex(null)
-    setHashesMatch(null)
-    setTimestamp(null)
+    setPhotoHashHex(null)
+    setTimestampIso(null)
+    setCaptureTimestampSec(null)
+    setCaptureSlot(null)
+    setCaptureBlockhash(null)
     setLocationLoading(false)
     setLocationValue(null)
     setSeekerLoading(false)
     setSeekerMintValue(null)
+    photoBytesRef.current = null
   }
 
   const handleUploadAndSubmit = async () => {
     try {
-      if (!previewUri || !preHashHex) {
+      if (!previewUri || !photoHashHex) {
         Snackbar.show({ text: 'Missing preview or hash', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
         return
       }
-      const ts = timestamp ?? new Date().toISOString()
-      const seekerMint = seekerMintValue
+      if (!account?.publicKey) {
+        Snackbar.show({ text: 'Connect wallet first', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+        return
+      }
+      const seekerMint = await ensureSeekerMint()
+      if (!seekerMint) {
+        Snackbar.show({ text: 'Requires Seeker Genesis Token in connected wallet', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(33,33,33,0.95)', textColor: 'white' })
+        return
+      }
+
+      const location = await ensureLocation()
+      if (!location) {
+        Snackbar.show({ text: 'Location is required for proof submission', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+        return
+      }
+      const locationString = `${location.latitude},${location.longitude}`
+
+      const { slot, blockhash, timestampSec } = await ensureBlockAnchor()
 
       let remoteUri: string | null = null
       try {
-        if (!seekerMint) {
-          const deviceMsg = isSeekerDevice() ? 'on Seeker device but no SGT in wallet' : 'not a Seeker device'
-          Snackbar.show({ text: `Requires Seeker to upload: ${deviceMsg}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(33,33,33,0.95)', textColor: 'white' })
-        } else {
-          const key = buildS3KeyForPhoto({
-            seekerMint,
-            photoHashHex: preHashHex,
-            extension: 'jpg',
-            basePrefix: AppConfig.s3.basePrefix,
-          })
-          const { uploadURL, key: returnedKey } = await requestPresignedPut(AppConfig.s3.presignEndpoint, {
-            key,
-            contentType: AppConfig.s3.defaultContentType,
-          })
-          const bytes = await FileSystem.readAsStringAsync(previewUri, { encoding: FileSystem.EncodingType.Base64 })
-          const u8 = Uint8Array.from(Buffer.from(bytes, 'base64'))
-          await putToPresignedUrl({ url: uploadURL, bytes: u8, contentType: AppConfig.s3.defaultContentType })
-          remoteUri = buildS3Uri(AppConfig.s3.bucket, returnedKey || key)
-          Snackbar.show({ text: 'Uploaded photo to S3', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(76, 175, 80, 0.95)', textColor: 'white' })
+        const key = buildS3KeyForPhoto({
+          seekerMint,
+          photoHashHex,
+          extension: 'jpg',
+          basePrefix: AppConfig.s3.basePrefix,
+        })
 
-          // On-chain submit (separate step so wallet cancellation isn’t reported as S3 failure)
-          try {
-            if (!account?.publicKey || !remoteUri) return
-            const locationString = locationValue ? `${locationValue.latitude},${locationValue.longitude}` : ''
-            if (remoteUri.length > 256) {
-              Snackbar.show({ text: 'S3 URI too long (>256)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
-              return
-            }
-            if (locationString.length > 256) {
-              Snackbar.show({ text: 'Location string too long (>256)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
-              return
-            }
+        const nonce = `${Date.now()}${Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, '0')}`
+        const integrityPayload = {
+          hashHex: photoHashHex,
+          location: locationString,
+          timestampSec,
+          wallet: account.publicKey.toBase58(),
+          nonce,
+          slot,
+          blockhash,
+        }
+        const canonicalPayload = canonicalizeIntegrityPayload(integrityPayload)
+        const sigBytes = await signMessage(new TextEncoder().encode(canonicalPayload))
+        const signatureB64 = Base64.fromUint8Array(sigBytes)
 
-            const hashBytes = Uint8Array.from(Buffer.from(preHashHex, 'hex'))
-            const [pda] = derivePhotoDataPda(account.publicKey, hashBytes, ts)
-            const existing = await connection.getAccountInfo(pda)
-            if (existing) {
-              Snackbar.show({ text: 'Photo already recorded on-chain (PDA exists)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(33,33,33,0.95)', textColor: 'white' })
-              return
-            }
+        const { uploadURL, key: returnedKey } = await requestPresignedPut(AppConfig.s3.presignEndpoint, {
+          key,
+          contentType: AppConfig.s3.defaultContentType,
+          integrity: {
+            version: 'v1',
+            payload: integrityPayload,
+            signature: signatureB64,
+          },
+        })
 
-            const { transaction } = await buildCreatePhotoDataTransaction({
-              connection,
-              payer: account.publicKey,
-              hash32: hashBytes,
-              s3Uri: remoteUri,
-              location: locationString,
-              timestamp: ts,
-            })
+        let uploadBytes = photoBytesRef.current
+        if (!uploadBytes) {
+          const fallbackBase64 = await FileSystem.readAsStringAsync(previewUri, { encoding: FileSystem.EncodingType.Base64 })
+          uploadBytes = Uint8Array.from(Buffer.from(fallbackBase64, 'base64'))
+          photoBytesRef.current = uploadBytes
+        }
+        await putToPresignedUrl({ url: uploadURL, bytes: uploadBytes, contentType: AppConfig.s3.defaultContentType })
+        remoteUri = buildS3Uri(AppConfig.s3.bucket, returnedKey || key)
+        Snackbar.show({ text: 'Uploaded photo to S3', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(76, 175, 80, 0.95)', textColor: 'white' })
 
-            const {
-              context: { slot: minContextSlot },
-            } = await connection.getLatestBlockhashAndContext()
-            const simRes = await connection.simulateTransaction(transaction as any, { replaceRecentBlockhash: true, sigVerify: false })
-
-            if (simRes.value.err) {
-              console.log('Simulation logs:', simRes.value.logs)
-              Snackbar.show({ text: 'Simulation failed (see logs)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
-              return
-            }
-
-            const signature = await signAndSendTransaction(transaction as any, minContextSlot)
-
-            Snackbar.show({ text: 'Submitted on-chain transaction', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(76, 175, 80, 0.95)', textColor: 'white' })
-
-            handleDiscard()
-            try { Linking.openURL(`https://solscan.io/tx/${signature}?cluster=${selectedCluster.network}`) } catch {}
-          } catch (err: any) {
-            const msg = String(err || '')
-            const friendly = msg.includes('CancellationException') ? 'Wallet request canceled' : (err?.message ?? 'unknown error')
-            Snackbar.show({ text: `On-chain submit failed: ${friendly}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+        // On-chain submit (separate step so wallet cancellation isn’t reported as S3 failure)
+        try {
+          if (!remoteUri) return
+          if (remoteUri.length > 256) {
+            Snackbar.show({ text: 'S3 URI too long (>256)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+            return
           }
+          if (locationString.length > 256) {
+            Snackbar.show({ text: 'Location string too long (>256)', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
+            return
+          }
+
+          const hashBytes = Uint8Array.from(Buffer.from(photoHashHex, 'hex'))
+          const latitudeE6 = Math.round(location.latitude * 1_000_000)
+          const longitudeE6 = Math.round(location.longitude * 1_000_000)
+          const nonceBigInt = BigInt(nonce)
+
+          const { transaction } = await buildRecordPhotoProofTransaction({
+            connection,
+            owner: account.publicKey,
+            hash32: hashBytes,
+            nonce: nonceBigInt,
+            timestampSec: Math.floor(timestampSec),
+            latitudeE6,
+            longitudeE6,
+          })
+
+          const {
+            context: { slot: minContextSlot },
+          } = await connection.getLatestBlockhashAndContext()
+          const signature = await signAndSendTransaction(transaction as any, minContextSlot)
+
+          Snackbar.show({ text: 'Submitted on-chain transaction', duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(76, 175, 80, 0.95)', textColor: 'white' })
+
+          handleDiscard()
+          try { Linking.openURL(`https://solscan.io/tx/${signature}?cluster=${selectedCluster.network}`) } catch {}
+        } catch (err: any) {
+          const msg = String(err || '')
+          const friendly = msg.includes('CancellationException') ? 'Wallet request canceled' : (err?.message ?? 'unknown error')
+          Snackbar.show({ text: `On-chain submit failed: ${friendly}`, duration: Snackbar.LENGTH_SHORT, backgroundColor: 'rgba(176,0,32,0.95)', textColor: 'white' })
         }
       } catch (e: any) {
         console.log('S3 upload error', e)
@@ -336,10 +410,9 @@ export default function TabCameraScreen() {
           )}
           <View style={styles.statsPanel}>
             <ScrollView style={{ maxHeight: 200 }}>
-              <Text style={styles.statText}>Time: {timestamp ?? 'loading...'}</Text>
-              <Text style={styles.statText}>Hash (pre): {preHashHex ?? 'loading...'}</Text>
-              <Text style={styles.statText}>Hash (post): {postHashHex ?? 'loading...'}</Text>
-              <Text style={styles.statText}>Match: {hashesMatch == null ? 'loading...' : (hashesMatch ? 'verified' : 'mismatch')}</Text>
+              <Text style={styles.statText}>Time: {timestampIso ?? 'loading...'}</Text>
+              <Text style={styles.statText}>Slot: {captureSlot ?? 'loading...'}</Text>
+              <Text style={styles.statText}>Hash: {photoHashHex ?? 'loading...'}</Text>
               <Text style={styles.statText}>
                 Location: {locationLoading ? 'loading...' : (locationValue ? `${locationValue.latitude.toFixed(5)}, ${locationValue.longitude.toFixed(5)}${locationValue.accuracy ? ` ±${Math.round(locationValue.accuracy)}m` : ''}` : 'unavailable')}
               </Text>

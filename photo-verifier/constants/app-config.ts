@@ -41,6 +41,11 @@ export class AppConfig {
   }
   // Seeker Genesis Token config: lists of mint addresses per cluster
   static seeker = {
+    verificationRpcUrl:
+      process.env.EXPO_PUBLIC_SEEKER_VERIFICATION_RPC_URL ||
+      ((Constants as any)?.expoConfig?.extra?.seeker?.verificationRpcUrl ??
+        (Constants as any)?.manifest?.extra?.seeker?.verificationRpcUrl) ||
+      'https://api.mainnet-beta.solana.com',
     devnetMints: AppConfig.parseCsv(
       process.env.EXPO_PUBLIC_SEEKER_DEVNET_MINTS ||
         ((Constants as any)?.expoConfig?.extra?.seeker?.devnetMints ?? (Constants as any)?.manifest?.extra?.seeker?.devnetMints),
