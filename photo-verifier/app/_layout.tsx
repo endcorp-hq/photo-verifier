@@ -9,6 +9,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { View } from 'react-native'
 import { useTrackLocations } from '@/hooks/use-track-locations'
 import { AppSplashController } from '@/components/app-splash-controller'
+import { useAuth } from '@/components/auth/auth-provider'
 
 
 SplashScreen.preventAutoHideAsync()
@@ -54,15 +55,18 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
+  const { isAuthenticated, isSeekerVerified } = useAuth()
+  const isAllowed = isAuthenticated && isSeekerVerified
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* <Stack.Protected guard={isAuthenticated}> */}
+      <Stack.Protected guard={isAllowed}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="+not-found" />
-      {/* </Stack.Protected>
-      <Stack.Protected guard={!isAuthenticated}>
+      </Stack.Protected>
+      <Stack.Protected guard={!isAllowed}>
         <Stack.Screen name="sign-in" />
-      </Stack.Protected> */}
+      </Stack.Protected>
+      <Stack.Screen name="+not-found" />
     </Stack>
   )
 }
