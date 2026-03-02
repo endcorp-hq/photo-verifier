@@ -13,7 +13,9 @@ export type UiIconSymbolName = keyof typeof MAPPING
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
 const MAPPING = {
+  'camera.fill': 'camera-alt',
   'gearshape.fill': 'settings',
+  'photo.on.rectangle.angled': 'photo-library',
   'wallet.pass.fill': 'wallet',
   'ladybug.fill': 'bug-report',
 } as UiIconMapping
