@@ -10,6 +10,22 @@ PhotoVerifier SDK for React Native/Expo apps that need tamper-evident photo proo
 - Presigned S3 upload helpers
 - Solana transaction builders for compressed photo-proof flows
 
+## Stability Boundaries
+
+- Production path: module-first helpers (`core/*`, `modules/presign`, `modules/onchain`).
+- Experimental class path (`ExperimentalPhotoVerifier` via `mobile` or `experimental` entrypoint): requires explicit `proofRuntime` configuration for `storeProof`/`verifyProof`.
+- Experimental compatibility path: `experimental.*` aliases for migration-safe imports.
+
+## Migration Notes
+
+- Canonical core APIs now come directly from `@photoverifier/core`.
+- Canonical blockchain APIs now come directly from `@photoverifier/blockchain`.
+- Deprecated SDK-local duplicate module paths were removed.
+- Prefer targeted entrypoints to reduce transitive dependencies:
+  - `@endcorp/photoverifier-sdk/core`
+  - `@endcorp/photoverifier-sdk/mobile`
+  - `@endcorp/photoverifier-sdk/onchain`
+
 ## Install
 
 ```bash
@@ -24,13 +40,15 @@ import { Base64 } from 'js-base64';
 import { Buffer } from 'buffer';
 import {
   blake3HexFromBytes,
+  putToPresignedUrl,
+} from '@endcorp/photoverifier-sdk/core';
+import {
   locationToH3Cell,
   h3CellToU64,
   canonicalizeIntegrityPayload,
   requestAttestedPresignedPut,
-  putToPresignedUrl,
   buildRecordPhotoProofTransaction,
-} from '@endcorp/photoverifier-sdk';
+} from '@endcorp/photoverifier-sdk/onchain';
 
 async function submitPhotoProof(params: {
   photoBytes: Uint8Array;

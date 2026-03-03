@@ -8,6 +8,11 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@photoverifier/core-mobile/camera": ["../core-mobile/dist/camera.d.ts"],
+      "@photoverifier/core-mobile/location": ["../core-mobile/dist/location.d.ts"]
+    },
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,

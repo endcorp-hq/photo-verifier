@@ -8,6 +8,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
+    },
+    "./mobile": {
+      "types": "./dist/mobile.d.ts",
+      "default": "./dist/mobile.js"
+    },
+    "./onchain": {
+      "types": "./dist/onchain.d.ts",
+      "default": "./dist/onchain.js"
+    },
+    "./dist/modules/presign.js": {
+      "default": "./dist/modules/presign.js"
     }
   },
   "sideEffects": false,
@@ -42,6 +57,9 @@
   },
   "dependencies": {
     "@noble/hashes": "^1.5.0",
+    "@photoverifier/blockchain": "workspace:*",
+    "@photoverifier/core": "workspace:*",
+    "@photoverifier/core-mobile": "workspace:*",
     "@solana/spl-account-compression": "^0.2.1",
     "h3-reactnative": "github:endcorp-hq/h3-reactnative#4e19a7c445e131977b6a031ecffe86dacbaa7f46",
     "js-base64": "^3.7.8"
