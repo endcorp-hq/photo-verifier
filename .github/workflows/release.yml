@@ -15,7 +15,7 @@ jobs:
       
       - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10
       
       - uses: actions/setup-node@v4
         with:
@@ -68,6 +68,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
+      - name: Install Solana and Anchor
+        run: |
+          sh -c "$(curl -sSfL 'https://release.solana.com/v1.18.1/install')"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install 0.31.1
+          avm use 0.31.1
+
       - name: Build on-chain program
         run: |
           cd on-chain/photo-proof-compressed
