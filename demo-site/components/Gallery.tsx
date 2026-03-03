@@ -55,8 +55,6 @@ export default function Gallery() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [verified, setVerified] = useState<Record<string, boolean>>({});
-  const [hashChecksStarted, setHashChecksStarted] = useState(false);
-  const [hashChecking, setHashChecking] = useState(false);
   const [deletingKeys, setDeletingKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -82,8 +80,7 @@ export default function Gallery() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!hashChecksStarted || !data?.items?.length) return;
-      setHashChecking(true);
+      if (!data?.items?.length) return;
       // Seed from cache to avoid re-hashing on remounts
       const seed: Record<string, boolean> = {};
       for (const it of data.items) {
@@ -115,12 +112,11 @@ export default function Gallery() {
         }
       }
       await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, pending.length)) }, () => worker()));
-      if (!cancelled) setHashChecking(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [data, hashChecksStarted]);
+  }, [data]);
 
   const groups = useMemo(() => {
     const map = new Map<string, PhotoItem[]>();
@@ -205,7 +201,7 @@ export default function Gallery() {
           <div><strong>Proof txs with image</strong>: {data?.summary?.proofAccountsWithImage ?? 0}</div>
           <div><strong>Orphaned proof txs</strong>: {data?.summary?.orphanedProofAccounts ?? 0}</div>
           <div>
-            <strong>Image hash checks</strong>: {hashChecksStarted ? `${hashCheckProgress.checked}/${hashCheckProgress.total}` : "not started"}
+            <strong>Image hash checks</strong>: {`${hashCheckProgress.checked}/${hashCheckProgress.total}`}
           </div>
         </div>
         <div className="summary-meta">
@@ -236,9 +232,7 @@ export default function Gallery() {
                       <span className="unverified-badge">No proof account match</span>
                     )}
                   </div>
-                  {!hashChecksStarted ? (
-                    <div className="row"><strong>Image Hash</strong>: <span className="pending-badge">Not run</span></div>
-                  ) : verified[item.key] === true ? (
+                  {verified[item.key] === true ? (
                     <div className="row verified"><strong>Image Hash</strong>: <span className="verified-badge">✓ Content matches hash</span></div>
                   ) : verified[item.key] === false ? (
                     <div className="row"><strong>Image Hash</strong>: <span className="unverified-badge">Mismatch</span></div>

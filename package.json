@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "lint": "pnpm run lint:ts && pnpm run lint:rust",
+    "lint:ts": "pnpm -C photo-verifier exec eslint . && pnpm -C demo-site run lint && pnpm -C packages/core run lint && pnpm -C packages/blockchain run lint && pnpm -C packages/photoverifier-sdk run lint && pnpm -C packages/photoverifier-seeker-sdk run lint",
+    "lint:rust": "cargo clippy --manifest-path on-chain/photo-proof-compressed/Cargo.toml --all-targets && cargo clippy --manifest-path on-chain/photo-verifier/Cargo.toml --all-targets",
     "release:pack-check": "bash scripts/npm-pack-check.sh",
     "release:dry-run": "bash scripts/npm-publish-dry-run.sh"
   },

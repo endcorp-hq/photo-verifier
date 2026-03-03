@@ -12,7 +12,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix"
   },
   "peerDependencies": {
     "@solana/spl-token": "*",
@@ -23,6 +25,12 @@
   "dependencies": {
     "@noble/hashes": "^1.5.0",
     "@solana/spl-account-compression": "^0.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.3",
+    "globals": "^17.4.0",
+    "typescript-eslint": "^8.56.1"
   },
   "license": "PROPRIETARY"
 }

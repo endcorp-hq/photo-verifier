@@ -28,6 +28,19 @@ importers:
       react-native:
         specifier: '>=0.74'
         version: 0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.1
+        version: 9.39.3
+      eslint:
+        specifier: ^9.39.3
+        version: 9.39.3
+      globals:
+        specifier: ^17.4.0
+        version: 17.4.0
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.8.3)
 
   packages/core:
     dependencies:
@@ -58,6 +71,19 @@ importers:
       react-native:
         specifier: '>=0.74'
         version: 0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.1
+        version: 9.39.3
+      eslint:
+        specifier: ^9.39.3
+        version: 9.39.3
+      globals:
+        specifier: ^17.4.0
+        version: 17.4.0
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.8.3)
 
   packages/photoverifier-sdk:
     dependencies:
@@ -149,6 +175,19 @@ importers:
       react-native:
         specifier: '>=0.74'
         version: 0.79.5(@babel/core@7.29.0)(@types/react@19.0.14)(bufferutil@4.1.0)(react@19.0.0)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.1
+        version: 9.39.3
+      eslint:
+        specifier: ^9.39.3
+        version: 9.39.3
+      globals:
+        specifier: ^17.4.0
+        version: 17.4.0
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.8.3)
 
   photo-verifier:
     dependencies:

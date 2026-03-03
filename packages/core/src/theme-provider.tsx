@@ -4,7 +4,8 @@
  * Provides theme context to all child components
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext } from 'react';
 import type { Theme } from './theme';
 import { defaultTheme } from './theme';
 

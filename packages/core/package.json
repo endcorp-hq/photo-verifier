@@ -12,7 +12,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix"
   },
   "peerDependencies": {
     "expo": ">=51",
@@ -26,5 +28,11 @@
   "dependencies": {
     "@noble/hashes": "^1.5.0",
     "js-base64": "^3.7.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.3",
+    "globals": "^17.4.0",
+    "typescript-eslint": "^8.56.1"
   }
 }

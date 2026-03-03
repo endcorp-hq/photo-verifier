@@ -127,7 +127,9 @@ export async function GET(request: Request) {
               sidecar = await res.json().catch(() => null);
               proofUrl = sidecarSignedUrl;
             }
-          } catch {}
+          } catch {
+            // Sidecar is optional; continue without it.
+          }
         }
 
         const payloadWallet = sidecar?.payload?.wallet ?? sidecar?.payload?.owner ?? null;
@@ -349,11 +351,15 @@ function decodeIxData(data: string | undefined): Buffer | null {
   if (!data) return null;
   try {
     return Buffer.from(anchorUtils.bytes.bs58.decode(data));
-  } catch {}
+  } catch {
+    // Ignore bs58 decode failures; fallback to base64 decode below.
+  }
   try {
     const raw = Buffer.from(data, 'base64');
     if (raw.length > 0) return raw;
-  } catch {}
+  } catch {
+    // Ignore invalid base64 payloads and treat as undecodable.
+  }
   return null;
 }
 

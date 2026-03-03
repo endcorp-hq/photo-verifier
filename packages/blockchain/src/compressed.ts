@@ -11,23 +11,11 @@
  * LICENSE: This module requires a valid license key
  */
 
+import { type Connection, PublicKey } from '@solana/web3.js';
 import {
-  Connection,
-  PublicKey,
-  Transaction,
-  TransactionInstruction,
-  VersionedTransaction,
-  TransactionMessage,
-  ComputeBudgetProgram,
-  SystemProgram,
-  Keypair,
-} from '@solana/web3.js';
-import {
-  getConcurrentMerkleTreeAccountSize,
-  ALL_DEPTH_SIZE_PAIRS,
+  getConcurrentMerkleTreeAccountSize
 } from '@solana/spl-account-compression';
 import { blake3 } from '@noble/hashes/blake3';
-import { bytesToHex } from '@noble/hashes/utils';
 
 // Program constants
 export const PHOTO_PROOF_PROGRAM_ID = new PublicKey('3i6eNpCFvXhMg8LESAutXWKUtAey9mAbTziLLuUc78Hu');

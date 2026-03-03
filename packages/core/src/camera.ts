@@ -3,12 +3,19 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import type { CaptureResult } from './types';
 
+type SavedPicture = { uri?: string };
+type PictureRefLike = { savePictureAsync: () => Promise<SavedPicture> };
+type CameraViewLike = {
+  takePictureAsync: (options: { pictureRef: true }) => Promise<PictureRefLike | null | undefined>;
+};
+
 /**
  * Capture a photo using the camera and persist to media library
  * Core camera functionality - free and open source
  */
 export async function captureAndPersist(cameraRef: React.RefObject<CameraView>): Promise<CaptureResult> {
-  const pictureRef: any = await (cameraRef as any).current?.takePictureAsync({ pictureRef: true });
+  const camera = cameraRef.current as unknown as CameraViewLike | null;
+  const pictureRef = await camera?.takePictureAsync({ pictureRef: true });
   if (!pictureRef) throw new Error('Unable to capture photo');
   
   const saved = await pictureRef.savePictureAsync();
@@ -25,7 +32,7 @@ export async function captureAndPersist(cameraRef: React.RefObject<CameraView>):
  * Read file as Base64 string
  */
 export async function readFileAsBase64(uri: string): Promise<string> {
-  return FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any });
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }
 
 

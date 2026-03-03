@@ -4,8 +4,6 @@
  * Allows white-label customization for partners integrating the SDK
  */
 
-import type { ReactNode } from 'react';
-
 export interface ThemeColors {
   // Primary
   primary: string;

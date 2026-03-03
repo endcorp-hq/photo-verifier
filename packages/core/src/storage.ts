@@ -53,7 +53,7 @@ export async function putToPresignedUrl(params: {
   const res = await fetch(params.url, {
     method: 'PUT',
     headers: { 'Content-Type': params.contentType },
-    body: params.bytes as any,
+    body: params.bytes as BodyInit,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
