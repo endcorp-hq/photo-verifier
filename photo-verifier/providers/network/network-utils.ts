@@ -1,5 +1,27 @@
 import type { Cluster } from '../../components/cluster/cluster'
-import { getExplorerClusterUrlParam } from '@photoverifier/core'
+import { ClusterNetwork } from '@/components/cluster/cluster-network'
+
+function getExplorerClusterUrlParam(network: Cluster['network'], endpoint?: string): string {
+  let suffix = ''
+
+  switch (network) {
+    case ClusterNetwork.Devnet:
+      suffix = 'devnet'
+      break
+    case ClusterNetwork.Mainnet:
+      suffix = ''
+      break
+    case ClusterNetwork.Testnet:
+      suffix = 'testnet'
+      break
+    case ClusterNetwork.Custom:
+    default:
+      suffix = `custom&customUrl=${encodeURIComponent(endpoint ?? '')}`
+      break
+  }
+
+  return suffix.length ? `?cluster=${suffix}` : ''
+}
 
 export function resolveInitialCluster(clusters: readonly Cluster[]): Cluster {
   if (!clusters.length) {
