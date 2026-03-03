@@ -1,5 +1,5 @@
 {
-  "name": "@photoverifier/sdk",
+  "name": "@endcorp/photoverifier-sdk",
   "version": "0.2.0",
   "description": "PhotoVerifier SDK for photo verification with blockchain anchoring",
   "main": "dist/index.js",

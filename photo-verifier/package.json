@@ -36,10 +36,10 @@
   "main": "./index.js",
   "version": "1.0.0",
   "dependencies": {
+    "@endcorp/photoverifier-sdk": "workspace:*",
     "@expo-google-fonts/darker-grotesque": "^0.4.2",
     "@expo/vector-icons": "^14.1.0",
     "@napi-rs/blake-hash": "^1.3.5",
-    "@photoverifier/sdk": "workspace:*",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-clipboard/clipboard": "^1.16.2",
     "@react-navigation/bottom-tabs": "^7.3.10",

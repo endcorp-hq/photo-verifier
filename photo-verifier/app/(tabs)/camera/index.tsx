@@ -32,7 +32,7 @@ import {
   getCurrentLocation,
   locationToH3Cell,
   putToPresignedUrl,
-} from '@photoverifier/sdk'
+} from '@endcorp/photoverifier-sdk'
 import { saveUploadHistoryRecord } from '@/utils/upload-history'
 import { PresignError, requestPresignedPut } from '@/utils/s3'
 

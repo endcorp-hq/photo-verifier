@@ -30,8 +30,8 @@ jobs:
         run: |
           pnpm --filter @photoverifier/core build
           pnpm --filter @photoverifier/blockchain build
-          pnpm --filter @photoverifier/sdk build
-          pnpm --filter @photoverifier/seeker-sdk build
+          pnpm --filter @endcorp/photoverifier-sdk build
+          pnpm --filter @endcorp/photoverifier-seeker-sdk build
 
       - name: Pack check
         run: pnpm release:pack-check

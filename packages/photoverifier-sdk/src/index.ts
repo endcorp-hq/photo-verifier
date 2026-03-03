@@ -7,7 +7,7 @@
  * 
  * Usage:
  * 
- * import { PhotoVerifier } from '@photoverifier/sdk';
+ * import { PhotoVerifier } from '@endcorp/photoverifier-sdk';
  * 
  * // Initialize with license (for blockchain features)
  * const verifier = new PhotoVerifier({

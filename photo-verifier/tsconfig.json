@@ -4,7 +4,7 @@
     "strict": true,
     "paths": {
       "@/*": ["./*"],
-      "@photoverifier/sdk": ["../packages/photoverifier-sdk/src"]
+      "@endcorp/photoverifier-sdk": ["../packages/photoverifier-sdk/src"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]

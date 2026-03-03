@@ -5,7 +5,7 @@ import {
   type PresignIntegrityPayload,
   type PresignIntegrityEnvelope,
   type AttestedPresignResponse,
-} from '@photoverifier/sdk';
+} from '@endcorp/photoverifier-sdk';
 
 export type PresignResponse = AttestedPresignResponse;
 export type { PresignErrorCode, PresignIntegrityPayload, PresignIntegrityEnvelope };

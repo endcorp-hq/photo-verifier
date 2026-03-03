@@ -1,5 +1,5 @@
 {
-  "name": "@photoverifier/seeker-sdk",
+  "name": "@endcorp/photoverifier-seeker-sdk",
   "version": "0.1.0",
   "description": "Seeker-first React Native SDK surface for photo verification and attested upload flows",
   "main": "dist/index.js",
@@ -46,7 +46,7 @@
     "react-native": ">=0.74"
   },
   "dependencies": {
-    "@photoverifier/sdk": "workspace:*",
+    "@endcorp/photoverifier-sdk": "workspace:*",
     "js-base64": "^3.7.8"
   },
   "devDependencies": {

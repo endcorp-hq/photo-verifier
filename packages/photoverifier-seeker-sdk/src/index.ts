@@ -1,6 +1,6 @@
 import { Base64 } from 'js-base64';
-import { canonicalizeIntegrityPayload as canonicalizePayload } from '@photoverifier/sdk';
-import type { PresignIntegrityEnvelope, PresignIntegrityPayload } from '@photoverifier/sdk';
+import { canonicalizeIntegrityPayload as canonicalizePayload } from '@endcorp/photoverifier-sdk';
+import type { PresignIntegrityEnvelope, PresignIntegrityPayload } from '@endcorp/photoverifier-sdk';
 
 // Re-export seeker-centric primitives from the base SDK.
 export {
@@ -28,7 +28,7 @@ export {
   type PresignIntegrityEnvelope,
   type PresignIntegrityPayload,
   type AttestedPresignResponse,
-} from '@photoverifier/sdk';
+} from '@endcorp/photoverifier-sdk';
 
 export type IntegrityEnvelopeSigner = (message: Uint8Array) => Promise<Uint8Array>;
 

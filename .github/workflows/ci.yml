@@ -30,15 +30,15 @@ jobs:
         run: |
           pnpm --filter @photoverifier/core build
           pnpm --filter @photoverifier/blockchain build
-          pnpm --filter @photoverifier/sdk build
-          pnpm --filter @photoverifier/seeker-sdk build
+          pnpm --filter @endcorp/photoverifier-sdk build
+          pnpm --filter @endcorp/photoverifier-seeker-sdk build
 
       - name: Run type checks
         run: |
           pnpm --filter @photoverifier/core exec tsc --noEmit
           pnpm --filter @photoverifier/blockchain exec tsc --noEmit
-          pnpm --filter @photoverifier/sdk exec tsc --noEmit
-          pnpm --filter @photoverifier/seeker-sdk smoke:types
+          pnpm --filter @endcorp/photoverifier-sdk exec tsc --noEmit
+          pnpm --filter @endcorp/photoverifier-seeker-sdk smoke:types
       
       - name: Build mobile app
         run: |

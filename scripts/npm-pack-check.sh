@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 PACKAGES=(
-  "@photoverifier/sdk:packages/photoverifier-sdk"
-  "@photoverifier/seeker-sdk:packages/photoverifier-seeker-sdk"
+  "@endcorp/photoverifier-sdk:packages/photoverifier-sdk"
+  "@endcorp/photoverifier-seeker-sdk:packages/photoverifier-seeker-sdk"
 )
 
 for entry in "${PACKAGES[@]}"; do

@@ -1,4 +1,4 @@
-import { verifySeeker } from '@photoverifier/sdk'
+import { verifySeeker } from '@endcorp/photoverifier-sdk'
 
 type SeekerVerificationResult = {
   isVerified: boolean
