@@ -15,6 +15,7 @@ import {
 } from 'react-native'
 import Snackbar from 'react-native-snackbar'
 import { useCluster } from '@/components/cluster/cluster-provider'
+import { ClusterNetwork } from '@/components/cluster/cluster-network'
 import {
   deleteUploadHistoryRecord,
   listUploadHistory,
@@ -26,6 +27,21 @@ function formatProofDate(timestampSec: number): string {
     return new Date(timestampSec * 1000).toLocaleString()
   } catch {
     return 'Unknown time'
+  }
+}
+
+function buildExplorerTxUrl(signature: string, network: string): string {
+  const base = `https://explorer.solana.com/tx/${signature}`
+  switch (network) {
+    case ClusterNetwork.Mainnet:
+      return base
+    case ClusterNetwork.Testnet:
+      return `${base}?cluster=testnet`
+    case ClusterNetwork.Custom:
+      return `${base}?cluster=custom`
+    case ClusterNetwork.Devnet:
+    default:
+      return `${base}?cluster=devnet`
   }
 }
 
@@ -89,7 +105,7 @@ export default function GalleryTabScreen() {
   const renderItem = useCallback(
     ({ item }: { item: UploadHistoryRecord }) => {
       const photoUri = item.localUri || item.remoteUri
-      const txUrl = `https://solscan.io/tx/${item.txSignature}?cluster=${selectedCluster.network}`
+      const txUrl = buildExplorerTxUrl(item.txSignature, item.clusterNetwork || selectedCluster.network)
       const h3Label =
         item.h3Cell && item.h3Resolution != null
           ? `${item.h3Cell} (r${item.h3Resolution})`

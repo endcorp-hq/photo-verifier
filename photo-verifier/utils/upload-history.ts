@@ -6,6 +6,7 @@ const MAX_HISTORY_ITEMS = 250
 export type UploadHistoryRecord = {
   id: string
   createdAtIso: string
+  clusterNetwork: string
   timestampSec: number
   slot: number
   blockhash: string
@@ -23,14 +24,30 @@ export type UploadHistoryRecord = {
 function coerceHistory(value: unknown): UploadHistoryRecord[] {
   if (!Array.isArray(value)) return []
   return value
+    .map((item): UploadHistoryRecord | null => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as Partial<UploadHistoryRecord>
+      if (
+        typeof row.id !== 'string' ||
+        typeof row.createdAtIso !== 'string' ||
+        typeof row.txSignature !== 'string' ||
+        typeof row.remoteUri !== 'string'
+      ) {
+        return null
+      }
+      return {
+        ...(row as UploadHistoryRecord),
+        // Legacy records (before per-record cluster tracking) default to devnet.
+        clusterNetwork: typeof row.clusterNetwork === 'string' && row.clusterNetwork.length > 0 ? row.clusterNetwork : 'devnet',
+      }
+    })
     .filter((item): item is UploadHistoryRecord => {
       return (
         !!item &&
-        typeof item === 'object' &&
-        typeof (item as UploadHistoryRecord).id === 'string' &&
-        typeof (item as UploadHistoryRecord).createdAtIso === 'string' &&
-        typeof (item as UploadHistoryRecord).txSignature === 'string' &&
-        typeof (item as UploadHistoryRecord).remoteUri === 'string'
+        typeof item.id === 'string' &&
+        typeof item.createdAtIso === 'string' &&
+        typeof item.txSignature === 'string' &&
+        typeof item.remoteUri === 'string'
       )
     })
     .sort((a, b) => Date.parse(b.createdAtIso) - Date.parse(a.createdAtIso))

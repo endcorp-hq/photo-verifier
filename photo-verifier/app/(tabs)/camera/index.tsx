@@ -555,10 +555,15 @@ export default function TabCameraScreen() {
       setSubmitSteps(current => ({ ...current, uploadedPhoto: true }))
 
       const txSignature = await signAndSendWithRecovery(txBuild.transaction as any, minContextSlot)
+      const signatureStatus = await connection.confirmTransaction(txSignature, 'confirmed')
+      if (signatureStatus.value.err) {
+        throw new Error(`Proof transaction failed: ${JSON.stringify(signatureStatus.value.err)}`)
+      }
       setSubmitSteps(current => ({ ...current, submittedOnchain: true }))
       const localUri = await copyPreviewToAppStorage(previewUri, photoHashHex).catch(() => null)
 
       await saveUploadHistoryRecord({
+        clusterNetwork: selectedCluster.network,
         timestampSec,
         slot,
         blockhash,
