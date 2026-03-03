@@ -4,7 +4,7 @@ import { PublicKey } from '@solana/web3.js'
 import { ActivityIndicator, TextInput, View } from 'react-native'
 import React, { useState } from 'react'
 import { Button } from '@react-navigation/elements'
-import { useTransferSol } from '@/components/account/use-transfer-sol'
+import { useTransferSol } from '@/features/account/hooks/use-transfer-sol'
 import { useThemeColor } from '@/hooks/use-theme-color'
 
 export function AccountFeatureSend({ address }: { address: PublicKey }) {
@@ -50,12 +50,14 @@ export function AccountFeatureSend({ address }: { address: PublicKey }) {
           <Button
             disabled={transferSol.isPending}
             onPress={() => {
-              transferSol
-                .mutateAsync({ amount: parseFloat(amount), destination: new PublicKey(destinationAddress) })
-                .then(() => {
-                  console.log(`Sent ${amount} SOL to ${destinationAddress}`)
-                })
-                .catch((err) => console.log(`Error sending SOL: ${err}`, err))
+              transferSol.mutate(
+                { amount: parseFloat(amount), destination: new PublicKey(destinationAddress) },
+                {
+                  onSuccess: () => {
+                    console.log(`Sent ${amount} SOL to ${destinationAddress}`)
+                  },
+                },
+              )
             }}
             variant="filled"
           >

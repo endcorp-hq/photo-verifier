@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js'
-import { useConnection } from '@/components/solana/solana-provider'
+import { useConnection } from '@/features/solana/providers/solana-provider'
 import { useQuery } from '@tanstack/react-query'
 
 export function useGetTokenAccountBalance({ address }: { address: PublicKey }) {

@@ -7,6 +7,7 @@ import {
   AuthorizeAPI,
   AuthToken,
   Base64EncodedAddress,
+  Chain,
   DeauthorizeAPI,
   SignInPayload,
 } from '@solana-mobile/mobile-wallet-adapter-protocol'
@@ -17,6 +18,7 @@ import { useCluster } from '@/components/cluster/cluster-provider'
 import { WalletIcon } from '@wallet-standard/core'
 import { ellipsify } from '@/utils/ellipsify'
 import { AppConfig } from '@/constants/app-config'
+import { ClusterNetwork } from '@/components/cluster/cluster-network'
 
 const identity: AppIdentity = { name: AppConfig.name, uri: AppConfig.uri }
 const AUTHORIZATION_STORAGE_KEY_PREFIX = 'authorization-cache'
@@ -36,6 +38,20 @@ type WalletAuthorization = Readonly<{
   selectedAccount: Account
 }>
 
+class WalletAuthorizationEmptyAccountsError extends Error {
+  constructor() {
+    super('Wallet connected without an account. Reconnect and select an account in your wallet.')
+    this.name = 'WalletAuthorizationEmptyAccountsError'
+  }
+}
+
+class UnsupportedWalletChainError extends Error {
+  constructor(clusterNetwork: ClusterNetwork) {
+    super(`Selected cluster network '${clusterNetwork}' is not supported by mobile wallet authorization`)
+    this.name = 'UnsupportedWalletChainError'
+  }
+}
+
 function getStorageKeyForChain(chainId: string): string {
   return `${AUTHORIZATION_STORAGE_KEY_PREFIX}:${chainId}`
 }
@@ -48,8 +64,7 @@ function getAccountFromAuthorizedAccount(account: AuthorizedAccount): Account {
   const publicKey = getPublicKeyFromAddress(account.address)
   return {
     address: account.address,
-    // TODO: Fix?
-    displayAddress: (account as unknown as { display_address: string }).display_address,
+    displayAddress: getDisplayAddress(account),
     icon: account.icon,
     label: account.label ?? ellipsify(publicKey.toString(), 8),
     publicKey,
@@ -60,6 +75,10 @@ function getAuthorizationFromAuthorizationResult(
   authorizationResult: AuthorizationResult,
   previouslySelectedAccount?: Account,
 ): WalletAuthorization {
+  if (!authorizationResult.accounts.length) {
+    throw new WalletAuthorizationEmptyAccountsError()
+  }
+
   let selectedAccount: Account
   if (
     previouslySelectedAccount == null ||
@@ -82,21 +101,79 @@ function getPublicKeyFromAddress(address: Base64EncodedAddress): PublicKey {
   return new PublicKey(publicKeyByteArray)
 }
 
-function cacheReviver(key: string, value: any) {
+function cacheReviver(key: string, value: unknown): unknown {
   if (key === 'publicKey') {
-    return new PublicKey(value as PublicKeyInitData)
-  } else {
-    return value
+    try {
+      return new PublicKey(value as PublicKeyInitData)
+    } catch {
+      return value
+    }
   }
+  return value
 }
 
 async function parseAuthorization(value: string | null): Promise<WalletAuthorization | null> {
   if (!value) return null
   try {
-    return JSON.parse(value, cacheReviver)
+    const parsed = JSON.parse(value, cacheReviver) as unknown
+    return isWalletAuthorization(parsed) ? parsed : null
   } catch {
     return null
   }
+}
+
+function getDisplayAddress(account: AuthorizedAccount): string | undefined {
+  const candidate = account as unknown as Record<string, unknown>
+  if (typeof candidate.displayAddress === 'string') return candidate.displayAddress
+  if (typeof candidate.display_address === 'string') return candidate.display_address
+  return undefined
+}
+
+function getWalletChainForCluster(clusterNetwork: ClusterNetwork): Chain {
+  switch (clusterNetwork) {
+    case ClusterNetwork.Devnet:
+      return 'devnet'
+    case ClusterNetwork.Testnet:
+      return 'testnet'
+    case ClusterNetwork.Mainnet:
+      return 'mainnet-beta'
+    default:
+      throw new UnsupportedWalletChainError(clusterNetwork)
+  }
+}
+
+function isWalletAuthorization(value: unknown): value is WalletAuthorization {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as {
+    accounts?: unknown
+    authToken?: unknown
+    selectedAccount?: unknown
+  }
+
+  const accounts = candidate.accounts
+  if (!Array.isArray(accounts) || !accounts.every(isAccount)) return false
+  if (typeof candidate.authToken !== 'string') return false
+  const selectedAccount = candidate.selectedAccount
+  if (!isAccount(selectedAccount)) return false
+  return accounts.some(account => account.address === selectedAccount.address)
+}
+
+function isAccount(value: unknown): value is Account {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as {
+    address?: unknown
+    displayAddress?: unknown
+    icon?: unknown
+    label?: unknown
+    publicKey?: unknown
+  }
+
+  if (typeof candidate.address !== 'string') return false
+  if (candidate.displayAddress !== undefined && typeof candidate.displayAddress !== 'string') return false
+  if (candidate.icon !== undefined && typeof candidate.icon !== 'string') return false
+  if (candidate.label !== undefined && typeof candidate.label !== 'string') return false
+  if (!(candidate.publicKey instanceof PublicKey)) return false
+  return true
 }
 
 function usePersistAuthorization(storageKey: string, queryKey: readonly [string, string]) {
@@ -142,6 +219,7 @@ function useInvalidateAuthorizations(queryKey: readonly [string, string]) {
 
 export function useAuthorization() {
   const { selectedCluster } = useCluster()
+  const chain = useMemo(() => getWalletChainForCluster(selectedCluster.network), [selectedCluster.network])
   const storageKey = useMemo(() => getStorageKeyForChain(selectedCluster.id), [selectedCluster.id])
   const queryKey = useMemo(() => getQueryKeyForChain(selectedCluster.id), [selectedCluster.id])
 
@@ -168,7 +246,7 @@ export function useAuthorization() {
       try {
         const authorizationResult = await wallet.authorize({
           identity,
-          chain: selectedCluster.id as any,
+          chain,
           auth_token: cachedAuthToken,
         })
         return (await handleAuthorizationResult(authorizationResult)).selectedAccount
@@ -179,12 +257,12 @@ export function useAuthorization() {
         await persistMutation.mutateAsync(null)
         const authorizationResult = await wallet.authorize({
           identity,
-          chain: selectedCluster.id as any,
+          chain,
         })
         return (await handleAuthorizationResult(authorizationResult)).selectedAccount
       }
     },
-    [fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation, selectedCluster.id],
+    [chain, fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation],
   )
 
   const authorizeSessionWithSignIn = useCallback(
@@ -194,7 +272,7 @@ export function useAuthorization() {
       try {
         const authorizationResult = await wallet.authorize({
           identity,
-          chain: selectedCluster.id as any,
+          chain,
           auth_token: cachedAuthToken,
           sign_in_payload: signInPayload,
         })
@@ -205,13 +283,13 @@ export function useAuthorization() {
         await persistMutation.mutateAsync(null)
         const authorizationResult = await wallet.authorize({
           identity,
-          chain: selectedCluster.id as any,
+          chain,
           sign_in_payload: signInPayload,
         })
         return (await handleAuthorizationResult(authorizationResult)).selectedAccount
       }
     },
-    [fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation, selectedCluster.id],
+    [chain, fetchQuery.data?.authToken, handleAuthorizationResult, persistMutation],
   )
 
   const deauthorizeSession = useCallback(

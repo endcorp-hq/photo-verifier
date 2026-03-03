@@ -1,9 +1,9 @@
-import { useWalletUi } from '@/components/solana/use-wallet-ui'
+import { useWalletUi } from '@/features/wallet-auth/use-wallet-ui'
 import { ellipsify } from '@/utils/ellipsify'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
-import { WalletUiButtonConnect } from '@/components/solana/wallet-ui-button-connect'
-import { WalletUiButtonDisconnect } from '@/components/solana/wallet-ui-button-disconnect'
+import { WalletUiButtonConnect } from '@/components/solana/ui/wallet-ui-button-connect'
+import { WalletUiButtonDisconnect } from '@/components/solana/ui/wallet-ui-button-disconnect'
 
 export function SettingsUiAccount() {
   const { account } = useWalletUi()

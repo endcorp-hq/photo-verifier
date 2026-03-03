@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js'
-import { useConnection } from '@/components/solana/solana-provider'
+import { useConnection } from '@/features/solana/providers/solana-provider'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 

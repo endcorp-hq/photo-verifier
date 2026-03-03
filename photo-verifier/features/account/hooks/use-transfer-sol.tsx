@@ -1,8 +1,8 @@
 import { PublicKey, TransactionSignature } from '@solana/web3.js'
-import { useConnection } from '@/components/solana/solana-provider'
+import { useConnection } from '@/features/solana/providers/solana-provider'
 import { useMutation } from '@tanstack/react-query'
-import { useWalletUi } from '@/components/solana/use-wallet-ui'
-import { createTransaction } from '@/components/account/create-transaction'
+import { useWalletUi } from '@/features/wallet-auth/use-wallet-ui'
+import { createTransaction } from '@/features/account/hooks/create-transaction'
 import { useGetBalanceInvalidate } from './use-get-balance'
 
 export function useTransferSol({ address }: { address: PublicKey }) {
@@ -25,15 +25,12 @@ export function useTransferSol({ address }: { address: PublicKey }) {
         // Send transaction and await for signature
         signature = await signAndSendTransaction(transaction, minContextSlot)
 
-        // Send transaction and await for signature
+        // Confirm transaction and surface any failures to React Query
         await connection.confirmTransaction({ signature, ...latestBlockhash }, 'confirmed')
-
-        console.log(signature)
         return signature
       } catch (error: unknown) {
-        console.log('error', `Transaction failed! ${error}`, signature)
-
-        return
+        const cause = error instanceof Error ? error.message : String(error)
+        throw new Error(`Transaction failed${signature ? ` (${signature})` : ''}: ${cause}`)
       }
     },
     onSuccess: async (signature) => {

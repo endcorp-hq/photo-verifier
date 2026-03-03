@@ -1,5 +1,5 @@
-import { useWalletUi } from '@/components/solana/use-wallet-ui'
-import { BaseButton } from '@/components/solana/base-button'
+import { useWalletUi } from '@/features/wallet-auth/use-wallet-ui'
+import { BaseButton } from '@/components/solana/ui/base-button'
 import React from 'react'
 
 export function WalletUiButtonDisconnect({ label = 'Disconnect' }: { label?: string }) {

@@ -1,6 +1,6 @@
 import { AppView } from '@/components/app-view'
 import { AppText } from '@/components/app-text'
-import { BaseButton } from '@/components/solana/base-button'
+import { BaseButton } from '@/components/solana/ui/base-button'
 import { blake3 } from '@noble/hashes/blake3'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 import * as React from 'react'
