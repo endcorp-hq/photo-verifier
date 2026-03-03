@@ -1,5 +1,7 @@
 packages:
-  - 'photo-verifier'
-  - 'packages/*'
+  - photo-verifier
+  - packages/*
 
+linkWorkspacePackages: true
 
+preferWorkspacePackages: true

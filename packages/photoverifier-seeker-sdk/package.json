@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/endcorp-hq/photo-verifier.git"
+    "url": "git+https://github.com/endcorp-hq/photo-verifier.git"
   },
   "publishConfig": {
     "access": "public"
@@ -46,7 +46,7 @@
     "react-native": ">=0.74"
   },
   "dependencies": {
-    "@endcorp/photoverifier-sdk": "workspace:*",
+    "@endcorp/photoverifier-sdk": "^0.2.1",
     "js-base64": "^3.7.8"
   },
   "devDependencies": {
