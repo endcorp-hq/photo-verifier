@@ -4,8 +4,8 @@
 
 Maintain two published packages:
 
-1. `@photoverifier/sdk` (full/canonical API)
-2. `@photoverifier/seeker-sdk` (focused wrapper for Seeker mobile flows)
+1. `@endcorp/photoverifier-sdk` (full/canonical API)
+2. `@endcorp/photoverifier-seeker-sdk` (focused wrapper for Seeker mobile flows)
 
 ## Rationale
 
@@ -15,7 +15,7 @@ Maintain two published packages:
 
 ## Package Boundaries
 
-## `@photoverifier/sdk`
+## `@endcorp/photoverifier-sdk`
 
 - Source of truth for:
   - H3 helpers (`locationToH3Cell`, `h3CellToU64`)
@@ -24,7 +24,7 @@ Maintain two published packages:
   - seeker detection/verification helpers
 - Includes broader open-core and blockchain exports.
 
-## `@photoverifier/seeker-sdk`
+## `@endcorp/photoverifier-seeker-sdk`
 
 - Re-exports high-frequency symbols from base SDK.
 - Adds ergonomic helpers:

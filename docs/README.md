@@ -8,7 +8,7 @@ This folder documents the current photo verification stack and operations.
 - [Configuration](./CONFIGURATION.md): app/demo/backend environment variables
 - [Devnet Runbook](./DEVNET_RUNBOOK.md): deploy and smoke test steps
 - [Troubleshooting](./TROUBLESHOOTING.md): known failures and fixes
-- [API](./API.md): `@photoverifier/sdk` and `@photoverifier/seeker-sdk` surfaces
+- [API](./API.md): `@endcorp/photoverifier-sdk` and `@endcorp/photoverifier-seeker-sdk` surfaces
 
 ## SDK/Product Docs
 

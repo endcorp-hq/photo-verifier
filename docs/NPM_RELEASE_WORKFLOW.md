@@ -2,8 +2,8 @@
 
 ## Packages
 
-- `@photoverifier/sdk`
-- `@photoverifier/seeker-sdk`
+- `@endcorp/photoverifier-sdk`
+- `@endcorp/photoverifier-seeker-sdk`
 
 ## Release Policy
 

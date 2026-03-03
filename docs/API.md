@@ -2,17 +2,17 @@
 
 This document summarizes the public API currently exported by:
 
-- `@photoverifier/sdk`
-- `@photoverifier/seeker-sdk`
+- `@endcorp/photoverifier-sdk`
+- `@endcorp/photoverifier-seeker-sdk`
 
 Source of truth is package source files in `packages/photoverifier-sdk/src/index.ts` and `packages/photoverifier-seeker-sdk/src/index.ts`.
 
 ## Installation
 
 ```bash
-npm install @photoverifier/sdk
+npm install @endcorp/photoverifier-sdk
 # optional wrapper
-npm install @photoverifier/seeker-sdk
+npm install @endcorp/photoverifier-seeker-sdk
 ```
 
 Peer deps (typical RN app):
@@ -21,11 +21,11 @@ Peer deps (typical RN app):
 npm install @solana/web3.js @solana/spl-token expo expo-camera expo-location expo-file-system expo-media-library react react-native
 ```
 
-## `@photoverifier/sdk`
+## `@endcorp/photoverifier-sdk`
 
 ### Core re-exports
 
-From `@photoverifier/core`:
+From `@endcorp/photoverifier-core`:
 
 - Hash: `blake3HexFromBase64`, `blake3HexFromBytes`, `blake3Hash`
 - Camera: `captureAndPersist`, `readFileAsBase64`, `readFileAsBytes`
@@ -35,7 +35,7 @@ From `@photoverifier/core`:
 
 ### Blockchain re-exports
 
-From `@photoverifier/blockchain`:
+From `@endcorp/photoverifier-blockchain`:
 
 - Compressed proof helpers: `serializePhotoProof`, `deserializePhotoProof`, `hashPhotoProof`, `calculateTreeCost`, `deriveTreeConfigPda`, `deriveAuthorityPda`, `getTreeCapacity`, `estimateCostPerPhoto`, `createLeafSchema`
 - Constants/types: `PHOTO_PROOF_PROGRAM_ID`, `BUBBLEGUM_PROGRAM_ID`, `TREE_CONFIGS`, `TreeConfig`, `PhotoProof`, `CompressedAccountConfig`, `PhotoProofResult`, `VerificationResult`
@@ -96,7 +96,7 @@ Constants:
 - `PresignIntegrityEnvelope`
 - `AttestedPresignResponse`
 
-## `@photoverifier/seeker-sdk`
+## `@endcorp/photoverifier-seeker-sdk`
 
 Wrapper package that re-exports key base SDK symbols plus seeker-centric helpers:
 
@@ -122,7 +122,7 @@ import {
   buildRecordPhotoProofTransaction,
   requestAttestedPresignedPut,
   putToPresignedUrl,
-} from '@photoverifier/sdk';
+} from '@endcorp/photoverifier-sdk';
 
 // 1) hash bytes
 const hashHex = blake3HexFromBytes(photoBytes);

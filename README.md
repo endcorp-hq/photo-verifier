@@ -13,8 +13,8 @@ Monorepo for a Seeker-gated photo verification system that:
 
 - `photo-verifier/`: Expo mobile app (camera, sign-in, on-chain submit, local gallery)
 - `demo-site/`: Next.js gallery and proof verification view
-- `packages/photoverifier-sdk/`: main SDK (`@photoverifier/sdk`)
-- `packages/photoverifier-seeker-sdk/`: Seeker-focused wrapper SDK (`@photoverifier/seeker-sdk`)
+- `packages/photoverifier-sdk/`: main SDK (`@endcorp/photoverifier-sdk`)
+- `packages/photoverifier-seeker-sdk/`: Seeker-focused wrapper SDK (`@endcorp/photoverifier-seeker-sdk`)
 - `packages/core/`: free core primitives (hash/camera/location/storage)
 - `packages/blockchain/`: licensed blockchain helpers
 - `on-chain/photo-proof-compressed/`: Anchor program

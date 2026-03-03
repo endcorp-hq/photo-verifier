@@ -35,7 +35,7 @@ flowchart LR
   - gets chain anchor (`slot`, `blockhash`, `block time`)
   - signs canonical integrity payload
   - uploads image and submits transaction
-- `@photoverifier/sdk`:
+- `@endcorp/photoverifier-sdk`:
   - hash/storage/location helpers
   - H3 helpers (`locationToH3Cell`, `h3CellToU64`)
   - presign parser + canonicalization

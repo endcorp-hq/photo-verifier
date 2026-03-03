@@ -4,15 +4,15 @@ Use this when moving older app code to the current H3 + attestation flow.
 
 ## Summary
 
-- Keep using `@photoverifier/sdk` for full surface.
-- Use `@photoverifier/seeker-sdk` for a narrower Seeker-focused app surface.
+- Keep using `@endcorp/photoverifier-sdk` for full surface.
+- Use `@endcorp/photoverifier-seeker-sdk` for a narrower Seeker-focused app surface.
 - Remove custom/local integrity canonicalizers; use SDK helper.
 - Remove direct `h3-js` usage in React Native; use SDK H3 helpers.
 
 ## Install
 
 ```bash
-npm install @photoverifier/seeker-sdk
+npm install @endcorp/photoverifier-seeker-sdk
 ```
 
 ## Common Mapping
@@ -35,7 +35,7 @@ import {
   locationToH3Cell,
   requestAttestedPresignedPut,
   buildRecordPhotoProofTransaction,
-} from '@photoverifier/seeker-sdk';
+} from '@endcorp/photoverifier-seeker-sdk';
 
 const h3Cell = locationToH3Cell({ latitude, longitude }, 7);
 const nonce = createNonceU64();
@@ -71,6 +71,6 @@ await buildRecordPhotoProofTransaction({
 
 ## Compatibility Notes
 
-- `@photoverifier/seeker-sdk` re-exports from `@photoverifier/sdk`; keep versions aligned.
+- `@endcorp/photoverifier-seeker-sdk` re-exports from `@endcorp/photoverifier-sdk`; keep versions aligned.
 - Current app default H3 resolution is `7`.
 - The flow does not include legacy latitude/longitude payload compatibility.
