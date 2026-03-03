@@ -33,6 +33,8 @@ pnpm -C demo-site dev
 | `TX_PAGE_SIZE` | No | Tx page size |
 | `LIST_CACHE_TTL_MS` | No | List cache TTL |
 | `TX_CACHE_TTL_MS` | No | Tx cache TTL |
+| `DEMO_SITE_API_TOKEN` | Prod: Yes | Bearer token required by API routes |
+| `DEMO_SITE_API_TOKEN_SCOPES` | No | Comma-separated scopes: `photos:read`, `photos:delete`, `proofs:read` (defaults to all) |
 
 ## AWS Permissions
 
