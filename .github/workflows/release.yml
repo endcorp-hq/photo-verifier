@@ -72,9 +72,13 @@ jobs:
         run: |
           sh -c "$(curl -sSfL 'https://release.solana.com/v1.18.1/install')"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+          command -v solana
+          cargo install cargo-build-sbf --locked --force
           cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
           avm install 0.31.1
           avm use 0.31.1
+          command -v cargo-build-sbf
 
       - name: Build on-chain program
         run: |

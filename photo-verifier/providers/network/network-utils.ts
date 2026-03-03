@@ -1,5 +1,5 @@
 import type { Cluster } from '../../components/cluster/cluster'
-import { getExplorerClusterUrlParam } from '@photoverifier/core/network/cluster-policy'
+import { getExplorerClusterUrlParam } from '@photoverifier/core'
 
 export function resolveInitialCluster(clusters: readonly Cluster[]): Cluster {
   if (!clusters.length) {

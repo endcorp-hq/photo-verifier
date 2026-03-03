@@ -115,6 +115,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.3
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.0.14
       eslint:
         specifier: ^9.39.3
         version: 9.39.3
