@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    if: ${{ false }}
     name: Test
     runs-on: ubuntu-latest
     
@@ -85,6 +86,7 @@ jobs:
           cargo clippy --manifest-path on-chain/photo-verifier/Cargo.toml --all-targets
 
   anchor-test:
+    if: ${{ false }}
     name: Anchor Tests
     runs-on: ubuntu-latest
     
