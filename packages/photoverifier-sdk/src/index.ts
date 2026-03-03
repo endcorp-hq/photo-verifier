@@ -51,7 +51,7 @@ export {
   type CaptureResult,
   type S3Config,
   type S3KeyParams,
-} from '../../core/src';
+} from './core';
 
 // Blockchain - requires license
 export {
@@ -82,7 +82,7 @@ export {
   UsageTracker,
   type LicenseInfo,
   type LicenseValidationResult,
-} from '../../blockchain/src';
+} from './blockchain';
 
 // Unified SDK class
 export { PhotoVerifier } from './sdk';

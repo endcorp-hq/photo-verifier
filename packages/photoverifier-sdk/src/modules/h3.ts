@@ -10,7 +10,7 @@ let cachedGeoToH3: GeoToH3Fn | null = null;
 function getGeoToH3(): GeoToH3Fn {
   if (cachedGeoToH3) return cachedGeoToH3;
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+   
   const h3 = require('h3-reactnative') as {
     geoToH3?: GeoToH3Fn;
     latLngToCell?: GeoToH3Fn;

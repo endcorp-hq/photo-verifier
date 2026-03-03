@@ -1,8 +1,9 @@
-export type S3Config = {
-  upload: (params: { key: string; contentType: string; bytes: Uint8Array }) => Promise<{ url: string; key: string }>;
-};
+import type { S3Config, S3KeyParams } from './types';
 
-// Thin abstraction: caller provides an uploader (pre-signed URL or SDK) via S3Config
+/**
+ * Thin abstraction: caller provides an uploader (pre-signed URL or SDK) via S3Config
+ * Core storage functionality - free and open source
+ */
 export async function uploadBytes(
   cfg: S3Config,
   key: string,
@@ -12,14 +13,11 @@ export async function uploadBytes(
   return cfg.upload({ key, contentType, bytes });
 }
 
-
-// build a stable s3 key for a photo, organized by Seeker NFT mint address
-export function buildS3KeyForPhoto(params: {
-  seekerMint: string;
-  photoHashHex: string;
-  extension?: string; // default: 'jpg'
-  basePrefix?: string; // default: 'photos/'
-}): string {
+/**
+ * Build a stable S3 key for a photo, organized by Seeker NFT mint address
+ * Key format: {prefix}/{seekerMint}/{hashHex}.{extension}
+ */
+export function buildS3KeyForPhoto(params: S3KeyParams): string {
   const { seekerMint, photoHashHex } = params;
   const extension = params.extension ?? 'jpg';
   const basePrefix = (params.basePrefix ?? 'photos/').replace(/^\/+|\/+$|^\s+|\s+$/g, '');
@@ -27,13 +25,26 @@ export function buildS3KeyForPhoto(params: {
   return `${prefix}${seekerMint}/${photoHashHex}.${extension}`;
 }
 
-// Construct an s3:// URI from bucket and key
+/**
+ * Construct an s3:// URI from bucket and key
+ */
 export function buildS3Uri(bucket: string, key: string): string {
   const normalizedKey = key.replace(/^\/+/, '');
   return `s3://${bucket}/${normalizedKey}`;
 }
 
-// Perform a PUT upload to a presigned URL
+/**
+ * Parse S3 URI to get bucket and key
+ */
+export function parseS3Uri(uri: string): { bucket: string; key: string } | null {
+  const match = uri.match(/^s3:\/\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return { bucket: match[1], key: match[2] };
+}
+
+/**
+ * Perform a PUT upload to a presigned URL
+ */
 export async function putToPresignedUrl(params: {
   url: string;
   bytes: Uint8Array;
@@ -49,4 +60,3 @@ export async function putToPresignedUrl(params: {
     throw new Error(`S3 upload failed (${res.status}): ${text}`);
   }
 }
-

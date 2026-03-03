@@ -1,9 +1,9 @@
 import {
+  type Connection,
+  type Transaction,
   PublicKey,
   SystemProgram,
-  Transaction,
   TransactionInstruction,
-  Connection,
   Keypair,
   TransactionMessage,
   VersionedTransaction,
@@ -14,7 +14,7 @@ import {
 import { sha256 } from '@noble/hashes/sha256';
 import { blake3 } from '@noble/hashes/blake3';
 import { bytesToHex } from '@noble/hashes/utils';
-import { buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl, S3Config } from './storage';
+import { type S3Config, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl } from './storage';
 import { h3CellToU64 } from './h3';
 
 export const PHOTO_PROOF_COMPRESSED_PROGRAM_ID = new PublicKey(

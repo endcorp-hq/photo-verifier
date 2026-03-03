@@ -4,29 +4,27 @@
  * High-level API that combines core and blockchain functionality
  */
 
-import { Connection, PublicKey } from '@solana/web3.js';
+import { type Connection, PublicKey } from '@solana/web3.js';
 import type { CameraView } from 'expo-camera';
-import type { GeoLocation, CaptureResult, S3Config } from '../../core/src';
 import {
-  blake3Hash,
-  captureAndPersist,
-  readFileAsBytes,
-  getCurrentLocation,
+  type CaptureResult,
+  type GeoLocation,
+  type S3Config,
   buildS3KeyForPhoto,
   buildS3Uri,
-  putToPresignedUrl,
-} from '../../core/src';
+  blake3Hash,
+  captureAndPersist,
+  getCurrentLocation,
+  readFileAsBytes
+} from './core';
 import {
   decodeLicenseKey,
   hasFeature,
-  UsageTracker,
-  PhotoProof,
-  serializePhotoProof,
   TREE_CONFIGS,
+  UsageTracker,
   type LicenseInfo,
-  type LicenseValidationResult,
-  type VerificationResult,
-} from '../../blockchain/src';
+  type VerificationResult
+} from './blockchain';
 
 export interface PhotoVerifierConfig {
   licenseKey?: string;
@@ -215,9 +213,6 @@ export class PhotoVerifier {
 
     const returnedKey = result.key ?? key;
     data.s3Uri = buildS3Uri(this.s3Bucket, returnedKey);
-
-
-    data.s3Uri = buildS3Uri(this.s3Bucket, result.key);
     return data.s3Uri;
   }
 
@@ -267,7 +262,7 @@ export class PhotoVerifier {
    * Verify a photo proof on-chain
    * Requires license
    */
-  async verifyProof(hash: string): Promise<VerificationResult> {
+  async verifyProof(_hash: string): Promise<VerificationResult> {
     if (!this.hasBlockchainAccess()) {
       throw new Error('Verification requires a valid license.');
     }

@@ -1,9 +1,61 @@
-import type { Connection, PublicKey } from '@solana/web3.js';
 import { Platform } from 'react-native';
-import { Connection as Web3Connection, PublicKey as Web3PublicKey } from '@solana/web3.js';
+import {
+  type AccountInfo,
+  type Connection,
+  type PublicKey,
+  Connection as Web3Connection,
+  PublicKey as Web3PublicKey
+} from '@solana/web3.js';
 
 // Default RPC URL - can be overridden via verifySeeker() param or environment
 const DEFAULT_RPC_URL = 'https://api.mainnet-beta.solana.com';
+
+type ParsedTokenAccountData = {
+  parsed?: {
+    info?: {
+      mint?: string;
+      tokenAmount?: { amount?: string };
+    };
+  };
+};
+
+type ParsedTokenAccount = {
+  account?: {
+    data?: ParsedTokenAccountData;
+  };
+};
+
+type TokenAccountsByOwnerV2Response = {
+  error?: { message?: string };
+  result?: {
+    paginationKey?: string | null;
+    value?: {
+      accounts?: ParsedTokenAccount[];
+    };
+  };
+};
+
+type SplTokenModule = {
+  TOKEN_2022_PROGRAM_ID: Web3PublicKey;
+  unpackMint: (mint: Web3PublicKey, mintInfo: AccountInfo<Buffer>, programId: Web3PublicKey) => {
+    address: Web3PublicKey;
+    mintAuthority?: Web3PublicKey | null;
+  };
+  getMetadataPointerState: (mint: unknown) => {
+    authority?: Web3PublicKey | null;
+    metadataAddress?: Web3PublicKey | null;
+  } | null;
+  getTokenGroupMemberState: (mint: unknown) => {
+    group?: Web3PublicKey | null;
+  } | null;
+};
+
+function extractMintAndAmount(parsed: ParsedTokenAccountData | undefined): { mint?: string; amount?: string } {
+  return {
+    mint: parsed?.parsed?.info?.mint,
+    amount: parsed?.parsed?.info?.tokenAmount?.amount,
+  };
+}
 
 export async function findSeekerMintForOwner(
   connection: Connection,
@@ -19,12 +71,13 @@ export async function findSeekerMintForOwner(
     ]);
     const all = [...tokenAccounts.value, ...token2022Accounts.value];
     for (const acc of all) {
-      const parsed: any = acc.account.data;
-      const mint: string | undefined = parsed?.parsed?.info?.mint;
-      const amount: string | undefined = parsed?.parsed?.info?.tokenAmount?.amount;
+      const parsed = acc.account.data as ParsedTokenAccountData;
+      const { mint, amount } = extractMintAndAmount(parsed);
       if (mint && amount !== '0' && seekerMintsByCluster.includes(mint)) return mint;
     }
-  } catch {}
+  } catch {
+    // Fail closed and return null for non-Seeker wallets or RPC errors.
+  }
   return null;
 }
 
@@ -48,7 +101,8 @@ export async function detectSeekerUser(
 // Lightweight client-side device check using Platform constants. Spoofable; for UX only.
 export function isSeekerDevice(): boolean {
   try {
-    return (Platform as any)?.constants?.Model === 'Seeker';
+    const platform = Platform as unknown as { constants?: { Model?: string } };
+    return platform.constants?.Model === 'Seeker';
   } catch {
     return false;
   }
@@ -78,13 +132,13 @@ export async function verifySeeker(params: {
   try {
     const connection = new Web3Connection(rpcUrl);
     const spl = await import('@solana/spl-token');
-    const { unpackMint, getMetadataPointerState, getTokenGroupMemberState, TOKEN_2022_PROGRAM_ID } = spl as any;
+    const { unpackMint, getMetadataPointerState, getTokenGroupMemberState, TOKEN_2022_PROGRAM_ID } =
+      spl as unknown as SplTokenModule;
 
     const mintStrings: string[] = [];
     const seenMints = new Set<string>();
-    const collectMint = (acc: any) => {
-      const mint = acc?.account?.data?.parsed?.info?.mint;
-      const amount = acc?.account?.data?.parsed?.info?.tokenAmount?.amount;
+    const collectMint = (acc: ParsedTokenAccount) => {
+      const { mint, amount } = extractMintAndAmount(acc?.account?.data);
       if (!mint || amount === '0') return;
       if (seenMints.has(mint)) return;
       seenMints.add(mint);
@@ -93,7 +147,7 @@ export async function verifySeeker(params: {
 
     // Preferred path for providers that support it (e.g. Helius).
     try {
-      let paginationKey: any = null;
+      let paginationKey: string | null = null;
       let pageCount = 0;
       do {
         pageCount++;
@@ -114,11 +168,11 @@ export async function verifySeeker(params: {
           body: JSON.stringify(requestPayload),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        if ((data as any).error) throw new Error(`RPC: ${(data as any).error?.message}`);
-        const value = (data as any)?.result?.value?.accounts ?? [];
+        const data = (await resp.json()) as TokenAccountsByOwnerV2Response;
+        if (data.error) throw new Error(`RPC: ${data.error?.message ?? 'unknown error'}`);
+        const value = data?.result?.value?.accounts ?? [];
         for (const account of value) collectMint(account);
-        paginationKey = (data as any)?.result?.paginationKey ?? null;
+        paginationKey = data?.result?.paginationKey ?? null;
       } while (paginationKey);
     } catch {
       // Fall through to standard Solana RPC method.
@@ -136,7 +190,7 @@ export async function verifySeeker(params: {
     const mintPubkeys = mintStrings.map((mint) => new Web3PublicKey(mint));
 
     const BATCH_SIZE = 100;
-    const mintAccountInfos: (import('@solana/web3.js').AccountInfo<Buffer> | null)[] = [];
+    const mintAccountInfos: (AccountInfo<Buffer> | null)[] = [];
     for (let i = 0; i < mintPubkeys.length; i += BATCH_SIZE) {
       const batch = mintPubkeys.slice(i, i + BATCH_SIZE);
       const infos = await connection.getMultipleAccountsInfo(batch);
