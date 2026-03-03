@@ -143,7 +143,7 @@ importers:
   packages/photoverifier-seeker-sdk:
     dependencies:
       '@endcorp/photoverifier-sdk':
-        specifier: ^0.2.1
+        specifier: ^0.2.2
         version: link:../photoverifier-sdk
       '@solana/spl-token':
         specifier: '*'
