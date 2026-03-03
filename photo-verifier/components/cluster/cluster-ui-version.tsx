@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useConnection } from '../solana/solana-provider'
+import { useConnection } from '@/features/solana/providers/solana-provider'
 import { AppText } from '@/components/app-text'
 import { Cluster } from '@/components/cluster/cluster'
 

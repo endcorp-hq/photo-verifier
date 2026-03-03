@@ -14,7 +14,12 @@ import {
 import { sha256 } from '@noble/hashes/sha256';
 import { blake3 } from '@noble/hashes/blake3';
 import { bytesToHex } from '@noble/hashes/utils';
-import { type S3Config, buildS3KeyForPhoto, buildS3Uri, putToPresignedUrl } from './storage';
+import type { S3Config } from '@photoverifier/core/dist/types.js';
+import {
+  buildS3KeyForPhoto,
+  buildS3Uri,
+  putToPresignedUrl,
+} from '@photoverifier/core/dist/storage.js';
 import { h3CellToU64 } from './h3';
 
 export const PHOTO_PROOF_COMPRESSED_PROGRAM_ID = new PublicKey(
@@ -35,6 +40,7 @@ export const PHOTO_PROOF_ATTESTATION_AUTHORITY = new PublicKey(
 const MERKLE_TREE_ACCOUNT_SPACE = 31_800;
 const TREE_CONFIG_MIN_DATA_LEN = 8 + 1 + 32 + 1 + 32;
 const ATTESTATION_PREFIX = new TextEncoder().encode('photo-proof-attestation-v1');
+const MILLISECONDS_PER_SECOND = 1_000;
 
 function instructionDiscriminator(name: string): Uint8Array {
   return sha256(new TextEncoder().encode(`global:${name}`)).slice(0, 8);
@@ -54,14 +60,14 @@ function unixSeconds(input: string | number): number {
   if (typeof input === 'number') return Math.trunc(input);
   const parsed = Date.parse(input);
   if (!Number.isFinite(parsed)) throw new Error(`Invalid timestamp: ${input}`);
-  return Math.trunc(parsed / 1000);
+  return Math.trunc(parsed / MILLISECONDS_PER_SECOND);
 }
 
-export function deriveTreeConfigPda(): [PublicKey, number] {
+export function deriveGlobalTreeConfigPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('tree_config')], PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
 }
 
-export function deriveTreeAuthorityPda(): [PublicKey, number] {
+export function deriveGlobalTreeAuthorityPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('tree_authority')], PHOTO_PROOF_COMPRESSED_PROGRAM_ID);
 }
 
@@ -139,8 +145,8 @@ export function buildInitializeTreeInstruction(params: {
   merkleTree: PublicKey;
   treeAuthorityPda: PublicKey;
 } {
-  const [treeConfigPda] = deriveTreeConfigPda();
-  const [treeAuthorityPda] = deriveTreeAuthorityPda();
+  const [treeConfigPda] = deriveGlobalTreeConfigPda();
+  const [treeAuthorityPda] = deriveGlobalTreeAuthorityPda();
   const keys = [
     { pubkey: treeConfigPda, isSigner: false, isWritable: true },
     { pubkey: params.merkleTree, isSigner: true, isWritable: true },
@@ -179,11 +185,11 @@ export function buildRecordPhotoProofInstruction(params: {
   merkleTree: PublicKey;
   treeAuthorityPda: PublicKey;
 } {
-  const treeConfigPda = params.treeConfigPda ?? deriveTreeConfigPda()[0];
+  const treeConfigPda = params.treeConfigPda ?? deriveGlobalTreeConfigPda()[0];
   if (!params.merkleTree) {
     throw new Error('merkleTree is required');
   }
-  const treeAuthorityPda = params.treeAuthorityPda ?? deriveTreeAuthorityPda()[0];
+  const treeAuthorityPda = params.treeAuthorityPda ?? deriveGlobalTreeAuthorityPda()[0];
   const feeRecipient = params.feeRecipient ?? PHOTO_PROOF_FEE_AUTHORITY;
   const data = encodeRecordPhotoProofArgs({
     hash32: params.hash32,
@@ -230,8 +236,8 @@ export async function buildRecordPhotoProofTransaction(params: {
   merkleTree: PublicKey;
   additionalSigners: Keypair[];
 }> {
-  const [treeConfigPda] = deriveTreeConfigPda();
-  const [treeAuthorityPda] = deriveTreeAuthorityPda();
+  const [treeConfigPda] = deriveGlobalTreeConfigPda();
+  const [treeAuthorityPda] = deriveGlobalTreeAuthorityPda();
   const maybeTree = await params.connection.getAccountInfo(treeConfigPda);
   const setupInstructions: TransactionInstruction[] = [];
   const additionalSigners: Keypair[] = [];
@@ -312,7 +318,7 @@ export async function buildRecordPhotoProofTransaction(params: {
   };
 }
 
-export async function sendTransactionWithKeypair(
+export function sendTransactionWithKeypair(
   connection: Connection,
   tx: Transaction,
   signer: Keypair
@@ -326,9 +332,50 @@ export async function confirmTransaction(connection: Connection, signature: stri
   await connection.confirmTransaction({ signature, ...latest }, 'confirmed');
 }
 
-export async function hashBytes(bytes: Uint8Array): Promise<{ hash32: Uint8Array; hashHex: string }> {
+export function hashBytes(bytes: Uint8Array): Promise<{ hash32: Uint8Array; hashHex: string }> {
   const digest = blake3(bytes);
-  return { hash32: digest, hashHex: bytesToHex(digest) };
+  return Promise.resolve({ hash32: digest, hashHex: bytesToHex(digest) });
+}
+
+export async function submitRecordPhotoProof(params: {
+  connection: Connection;
+  owner: PublicKey;
+  sendTransaction: (
+    tx: Transaction | VersionedTransaction,
+    minContextSlot: number
+  ) => Promise<string>;
+  hash32: Uint8Array;
+  nonce: number | bigint;
+  timestamp: string | number;
+  h3Cell: string;
+  attestationSignature64: Uint8Array;
+}): Promise<{ signature: string; merkleTree: PublicKey }> {
+  const { transaction, merkleTree } = await buildRecordPhotoProofTransaction({
+    connection: params.connection,
+    owner: params.owner,
+    hash32: params.hash32,
+    nonce: params.nonce,
+    timestampSec: unixSeconds(params.timestamp),
+    h3CellU64: h3CellToU64(params.h3Cell),
+    attestationSignature64: params.attestationSignature64,
+  });
+  const signature = await params.sendTransaction(
+    transaction,
+    await resolveMinContextSlot(params.connection)
+  );
+  await confirmTransaction(params.connection, signature);
+  return { signature, merkleTree };
+}
+
+async function resolveMinContextSlot(connection: Connection): Promise<number> {
+  const maybeConnection = connection as Connection & {
+    getLatestBlockhashAndContext?: () => Promise<{ context: { slot: number } }>;
+  };
+  if (typeof maybeConnection.getLatestBlockhashAndContext !== 'function') {
+    return 0;
+  }
+  const { context } = await maybeConnection.getLatestBlockhashAndContext();
+  return context.slot;
 }
 
 export async function uploadAndSubmit(params: {
@@ -352,37 +399,80 @@ export async function uploadAndSubmit(params: {
   hashHex: string;
 }> {
   const { hash32, hashHex } = await hashBytes(params.photoBytes);
-  const s3Key = buildS3KeyForPhoto({
+  const requestedS3Key = buildS3KeyForPhoto({
     seekerMint: params.seekerMint,
     photoHashHex: hashHex,
     basePrefix: params.basePrefix,
   });
-  const s3Uri = buildS3Uri(params.bucket, s3Key);
+  const upload = await params.s3.upload({
+    key: requestedS3Key,
+    contentType: params.contentType || 'image/jpeg',
+    bytes: params.photoBytes,
+  });
+  const s3Key = upload.key ?? requestedS3Key;
+
+  return submitPhotoProofWithPresignedUpload({
+    connection: params.connection,
+    owner: params.owner,
+    sendTransaction: async (tx) => params.sendTransaction(tx),
+    bucket: params.bucket,
+    s3Key,
+    uploadUrl: upload.url,
+    photoBytes: params.photoBytes,
+    contentType: params.contentType || 'image/jpeg',
+    hash32,
+    hashHex,
+    nonce: params.nonce,
+    timestamp: params.timestamp,
+    h3Cell: params.h3Cell,
+    attestationSignature64: params.attestationSignature64,
+  });
+}
+
+export async function submitPhotoProofWithPresignedUpload(params: {
+  connection: Connection;
+  owner: PublicKey;
+  sendTransaction: (
+    tx: Transaction | VersionedTransaction,
+    minContextSlot: number
+  ) => Promise<string>;
+  bucket: string;
+  s3Key: string;
+  uploadUrl: string;
+  photoBytes: Uint8Array;
+  contentType?: string;
+  hash32: Uint8Array;
+  hashHex: string;
+  nonce: number | bigint;
+  timestamp: string | number;
+  h3Cell: string;
+  attestationSignature64: Uint8Array;
+  onUploaded?: () => void | Promise<void>;
+}): Promise<{
+  signature: string;
+  s3Key: string;
+  s3Uri: string;
+  hashHex: string;
+}> {
+  const s3Uri = buildS3Uri(params.bucket, params.s3Key);
 
   await putToPresignedUrl({
-    url: (
-      await params.s3.upload({
-        key: s3Key,
-        contentType: params.contentType || 'image/jpeg',
-        bytes: params.photoBytes,
-      })
-    ).url,
+    url: params.uploadUrl,
     bytes: params.photoBytes,
     contentType: params.contentType || 'image/jpeg',
   });
+  if (params.onUploaded) await params.onUploaded();
 
-  const { transaction } = await buildRecordPhotoProofTransaction({
+  const { signature } = await submitRecordPhotoProof({
     connection: params.connection,
     owner: params.owner,
-    hash32,
+    sendTransaction: params.sendTransaction,
+    hash32: params.hash32,
     nonce: params.nonce,
-    timestampSec: unixSeconds(params.timestamp),
-    h3CellU64: h3CellToU64(params.h3Cell),
+    timestamp: params.timestamp,
+    h3Cell: params.h3Cell,
     attestationSignature64: params.attestationSignature64,
-  });
+  })
 
-  const signature = await params.sendTransaction(transaction);
-  await confirmTransaction(params.connection, signature);
-
-  return { signature, s3Key, s3Uri, hashHex };
+  return { signature, s3Key: params.s3Key, s3Uri, hashHex: params.hashHex };
 }

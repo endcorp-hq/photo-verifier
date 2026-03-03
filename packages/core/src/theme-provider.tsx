@@ -6,8 +6,8 @@
 
 import type { ReactNode } from 'react';
 import React, { createContext, useContext } from 'react';
-import type { Theme } from './theme';
-import { defaultTheme } from './theme';
+import type { Theme } from './theme.js';
+import { defaultTheme } from './theme.js';
 
 const ThemeContext = createContext<Theme>(defaultTheme);
 
@@ -57,19 +57,6 @@ export function useTheme(): Theme {
   return useContext(ThemeContext);
 }
 
-/**
- * Hook to access specific theme values
- * 
- * @example
- * ```tsx
- * const { colors, spacing, strings } = useThemeValues();
- * ```
- */
-export function useThemeValues() {
-  const theme = useTheme();
-  return theme;
-}
-
 // Re-export theme utilities
 export {
   type Theme,
@@ -84,4 +71,4 @@ export {
   lightTheme,
   createCustomTheme,
   themes,
-} from './theme';
+} from './theme.js';

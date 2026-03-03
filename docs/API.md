@@ -3,6 +3,9 @@
 This document summarizes the public API currently exported by:
 
 - `@endcorp/photoverifier-sdk`
+- `@endcorp/photoverifier-sdk/core`
+- `@endcorp/photoverifier-sdk/mobile`
+- `@endcorp/photoverifier-sdk/onchain`
 - `@endcorp/photoverifier-seeker-sdk`
 
 Source of truth is package source files in `packages/photoverifier-sdk/src/index.ts` and `packages/photoverifier-seeker-sdk/src/index.ts`.
@@ -30,8 +33,18 @@ From `@endcorp/photoverifier-core`:
 - Hash: `blake3HexFromBase64`, `blake3HexFromBytes`, `blake3Hash`
 - Camera: `captureAndPersist`, `readFileAsBase64`, `readFileAsBytes`
 - Location: `getCurrentLocation`, `hasLocationServicesEnabled`, `requestLocationPermission`, `locationToString`, `parseLocationString`
-- Storage: `uploadBytes`, `buildS3KeyForPhoto`, `buildS3Uri`, `parseS3Uri`, `putToPresignedUrl`
-- Types: `Blake3HashResult`, `GeoLocation`, `PhotoMetadata`, `CaptureResult`, `S3Config`, `S3KeyParams`
+- Storage: `uploadBytes`, `buildS3KeyForPhoto`, `parseS3PhotoKey`, `buildS3Uri`, `parseS3Uri`, `putToPresignedUrl`
+- Types: `Blake3HashResult`, `GeoLocation`, `PhotoMetadata`, `CaptureResult`, `S3Config`, `S3KeyParams`, `S3UploadRequest`, `S3UploadResult`, `PresignedPutRequest`, `S3UriParts`, `S3PhotoKeyParseParams`
+
+### Targeted entrypoints
+
+- `@endcorp/photoverifier-sdk/core`:
+  - Hash + storage + contract/network constants only (no camera/location, no blockchain helpers).
+- `@endcorp/photoverifier-sdk/mobile`:
+  - Camera/location + seeker/mobile helpers.
+  - Experimental class exports only: `ExperimentalPhotoVerifier` and associated `Experimental*` types.
+- `@endcorp/photoverifier-sdk/onchain`:
+  - Blockchain exports, on-chain instruction/transaction builders, and presign helpers.
 
 ### Blockchain re-exports
 
@@ -41,12 +54,16 @@ From `@endcorp/photoverifier-blockchain`:
 - Constants/types: `PHOTO_PROOF_PROGRAM_ID`, `BUBBLEGUM_PROGRAM_ID`, `TREE_CONFIGS`, `TreeConfig`, `PhotoProof`, `CompressedAccountConfig`, `PhotoProofResult`, `VerificationResult`
 - License helpers: `LICENSE_TIERS`, `encodeLicenseKey`, `decodeLicenseKey`, `hasFeature`, `createDemoLicenseKey`, `UsageTracker`, `LicenseInfo`, `LicenseValidationResult`
 
-### SDK class
+### Experimental SDK class
 
-- `PhotoVerifier`
-- `PhotoVerifierConfig`, `PhotoVerifierOptions`
+From `@endcorp/photoverifier-sdk/mobile` or `@endcorp/photoverifier-sdk/experimental`:
 
-Note: the class exists, but production app flow uses direct module helpers for upload/attestation/on-chain submit.
+- `ExperimentalPhotoVerifier`
+- `ExperimentalPhotoVerifierConfig`, `ExperimentalPhotoVerifierOptions`
+- `ExperimentalProofRuntimeConfig`, `ExperimentalProofRuntimeAttestationInput`
+- `ExperimentalMissingProofRuntimeError`
+
+Note: this class is intentionally scoped as experimental convenience; production flows should prefer `core` + `onchain` helper entrypoints.
 
 ### Seeker helpers
 
@@ -68,8 +85,8 @@ Note: the class exists, but production app flow uses direct module helpers for u
 - `buildRecordPhotoProofTransaction`
 - `buildRecordPhotoProofInstruction`
 - `buildInitializeTreeInstruction`
-- `deriveOnchainTreeConfigPda`
-- `deriveTreeAuthorityPda`
+- `deriveGlobalTreeConfigPda`
+- `deriveGlobalTreeAuthorityPda`
 - `buildAttestationMessage`
 - `sendTransactionWithKeypair`
 - `confirmTransaction`
@@ -117,12 +134,14 @@ Also re-exports:
 ```ts
 import {
   blake3HexFromBytes,
+  putToPresignedUrl,
+} from '@endcorp/photoverifier-sdk/core';
+import {
   locationToH3Cell,
   canonicalizeIntegrityPayload,
   buildRecordPhotoProofTransaction,
   requestAttestedPresignedPut,
-  putToPresignedUrl,
-} from '@endcorp/photoverifier-sdk';
+} from '@endcorp/photoverifier-sdk/onchain';
 
 // 1) hash bytes
 const hashHex = blake3HexFromBytes(photoBytes);

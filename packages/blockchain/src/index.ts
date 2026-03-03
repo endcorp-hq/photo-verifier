@@ -9,25 +9,34 @@
  * LICENSE: This component requires a valid license key
  */
 
-export * from './compressed';
-export * from './license';
-export * from './types';
+export * from './compressed.js';
+export * from './contracts/compressed-contracts.js';
+export * from './serialization/compressed-proof.js';
+export * from './economics/tree-cost.js';
+export * from './license.js';
+export * from './types.js';
 
 // Re-export commonly used functions
 export {
   PHOTO_PROOF_PROGRAM_ID,
   BUBBLEGUM_PROGRAM_ID,
   TREE_CONFIGS,
+  deriveTreeConfigPda,
+  deriveAuthorityPda,
+} from './contracts/compressed-contracts.js';
+
+export {
   serializePhotoProof,
   deserializePhotoProof,
   hashPhotoProof,
+  createLeafSchema,
+} from './serialization/compressed-proof.js';
+
+export {
   calculateTreeCost,
-  deriveTreeConfigPda,
-  deriveAuthorityPda,
   getTreeCapacity,
   estimateCostPerPhoto,
-  createLeafSchema,
-} from './compressed';
+} from './economics/tree-cost.js';
 
 export {
   LICENSE_TIERS,
@@ -36,4 +45,4 @@ export {
   hasFeature,
   createDemoLicenseKey,
   UsageTracker,
-} from './license';
+} from './license.js';

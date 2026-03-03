@@ -5,7 +5,9 @@ import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
 export default function TabLayout() {
   return (
     <Tabs
+      detachInactiveScreens={false}
       screenOptions={{
+        freezeOnBlur: false,
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#091726',

@@ -4,6 +4,15 @@ import { blake3 } from "@noble/hashes/blake3";
 import { bytesToHex } from "@noble/hashes/utils";
 
 const verifiedCache = new Map<string, boolean>();
+const API_TOKEN = process.env.NEXT_PUBLIC_DEMO_SITE_API_TOKEN;
+
+function fetchApi(input: RequestInfo | URL, init?: RequestInit) {
+  const headers = new Headers(init?.headers);
+  if (API_TOKEN) {
+    headers.set("Authorization", `Bearer ${API_TOKEN}`);
+  }
+  return fetch(input, { ...init, headers });
+}
 
 type PhotoItem = {
   key: string;
@@ -50,19 +59,23 @@ type ApiResponse = {
   prefix: string;
 };
 
+type PhotoGroup = {
+  seekerMint: string;
+  items: PhotoItem[];
+};
+
 export default function Gallery() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [verified, setVerified] = useState<Record<string, boolean>>({});
-  const [deletingKeys, setDeletingKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/list");
+        const res = await fetchApi("/api/list");
         if (!res.ok) throw new Error(`Failed to load (${res.status})`);
         const json = (await res.json()) as ApiResponse;
         if (!cancelled) setData(json);
@@ -118,7 +131,7 @@ export default function Gallery() {
     };
   }, [data]);
 
-  const groups = useMemo(() => {
+  const groups = useMemo<PhotoGroup[]>(() => {
     const map = new Map<string, PhotoItem[]>();
     for (const it of data?.items ?? []) {
       const key = it.seekerMint || "unknown";
@@ -133,6 +146,66 @@ export default function Gallery() {
     const checked = (data?.items ?? []).filter((item) => item.hashHex && (verified[item.key] !== undefined || verifiedCache.has(item.key))).length;
     return { total, checked };
   }, [data, verified]);
+  const { deletingKeys, handleDelete } = useDeletePhoto({
+    setData,
+    setVerified,
+  });
+
+  if (loading) return <div className="status">Loading…</div>;
+  if (error) return <div className="status">Error: {error}</div>;
+  if (!groups.length) return <div className="status">No photos found.</div>;
+
+  return (
+    <div>
+      <VerificationSummary data={data} hashCheckProgress={hashCheckProgress} />
+      {groups.map((group) => (
+        <SeekerGroup
+          key={group.seekerMint}
+          group={group}
+          verified={verified}
+          deletingKeys={deletingKeys}
+          onDelete={handleDelete}
+        />
+      ))}
+      <ProofTransactionList proofs={data?.proofs} />
+    </div>
+  );
+}
+
+function VerificationSummary({
+  data,
+  hashCheckProgress,
+}: {
+  data: ApiResponse | null;
+  hashCheckProgress: { total: number; checked: number };
+}) {
+  return (
+    <section className="summary">
+      <h2 className="group-title">Verification Summary</h2>
+      <div className="summary-grid">
+        <div><strong>Images</strong>: {data?.summary?.totalImages ?? data?.items.length ?? 0}</div>
+        <div><strong>On-chain matched</strong>: {data?.summary?.onChainMatchedImages ?? 0}</div>
+        <div><strong>Unmatched images</strong>: {data?.summary?.unmatchedImages ?? 0}</div>
+        <div><strong>Proof txs</strong>: {data?.summary?.totalProofAccounts ?? data?.proofs?.length ?? 0}</div>
+        <div><strong>Proof txs with image</strong>: {data?.summary?.proofAccountsWithImage ?? 0}</div>
+        <div><strong>Orphaned proof txs</strong>: {data?.summary?.orphanedProofAccounts ?? 0}</div>
+        <div>
+          <strong>Image hash checks</strong>: {`${hashCheckProgress.checked}/${hashCheckProgress.total}`}
+        </div>
+      </div>
+      <div className="summary-meta">
+        <span><strong>Program</strong>: {formatHash(data?.programId ?? '')}</span>
+      </div>
+    </section>
+  );
+}
+
+function useDeletePhoto(params: {
+  setData: (updater: (prev: ApiResponse | null) => ApiResponse | null) => void;
+  setVerified: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
+}) {
+  const { setData, setVerified } = params;
+  const [deletingKeys, setDeletingKeys] = useState<Record<string, boolean>>({});
 
   async function handleDelete(item: PhotoItem) {
     const ok = window.confirm(`Delete image ${item.key} from S3? This will not remove on-chain proof accounts.`);
@@ -140,7 +213,7 @@ export default function Gallery() {
 
     setDeletingKeys((m) => ({ ...m, [item.key]: true }));
     try {
-      const res = await fetch("/api/photo", {
+      const res = await fetchApi("/api/photo", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: item.key, deleteSidecar: true }),
@@ -160,14 +233,8 @@ export default function Gallery() {
             ? {
                 ...prev.summary,
                 totalImages: Math.max(0, prev.summary.totalImages - 1),
-                onChainMatchedImages: Math.max(
-                  0,
-                  prev.summary.onChainMatchedImages - (item.onChainVerified ? 1 : 0)
-                ),
-                unmatchedImages: Math.max(
-                  0,
-                  prev.summary.unmatchedImages - (item.onChainVerified ? 0 : 1)
-                ),
+                onChainMatchedImages: Math.max(0, prev.summary.onChainMatchedImages - (item.onChainVerified ? 1 : 0)),
+                unmatchedImages: Math.max(0, prev.summary.unmatchedImages - (item.onChainVerified ? 0 : 1)),
               }
             : prev.summary,
         };
@@ -185,114 +252,129 @@ export default function Gallery() {
     }
   }
 
-  if (loading) return <div className="status">Loading…</div>;
-  if (error) return <div className="status">Error: {error}</div>;
-  if (!groups.length) return <div className="status">No photos found.</div>;
+  return { deletingKeys, handleDelete };
+}
 
+function SeekerGroup({
+  group,
+  verified,
+  deletingKeys,
+  onDelete,
+}: {
+  group: PhotoGroup;
+  verified: Record<string, boolean>;
+  deletingKeys: Record<string, boolean>;
+  onDelete: (item: PhotoItem) => Promise<void>;
+}) {
   return (
-    <div>
-      <section className="summary">
-        <h2 className="group-title">Verification Summary</h2>
-        <div className="summary-grid">
-          <div><strong>Images</strong>: {data?.summary?.totalImages ?? data?.items.length ?? 0}</div>
-          <div><strong>On-chain matched</strong>: {data?.summary?.onChainMatchedImages ?? 0}</div>
-          <div><strong>Unmatched images</strong>: {data?.summary?.unmatchedImages ?? 0}</div>
-          <div><strong>Proof txs</strong>: {data?.summary?.totalProofAccounts ?? data?.proofs?.length ?? 0}</div>
-          <div><strong>Proof txs with image</strong>: {data?.summary?.proofAccountsWithImage ?? 0}</div>
-          <div><strong>Orphaned proof txs</strong>: {data?.summary?.orphanedProofAccounts ?? 0}</div>
-          <div>
-            <strong>Image hash checks</strong>: {`${hashCheckProgress.checked}/${hashCheckProgress.total}`}
-          </div>
+    <section key={group.seekerMint} className="group">
+      <h2 className="group-title">
+        Seeker: {group.seekerMint}
+        {group.seekerMint && group.seekerMint !== "unknown" ? (
+          <> · <a href={`https://solscan.io/token/${group.seekerMint}`} target="_blank" rel="noreferrer noopener">View on Solscan</a></>
+        ) : null}
+      </h2>
+      <div className="cards" role="list">
+        {group.items.map((item) => (
+          <PhotoCard
+            key={item.key}
+            item={item}
+            verified={verified}
+            isDeleting={Boolean(deletingKeys[item.key])}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PhotoCard({
+  item,
+  verified,
+  isDeleting,
+  onDelete,
+}: {
+  item: PhotoItem;
+  verified: Record<string, boolean>;
+  isDeleting: boolean;
+  onDelete: (item: PhotoItem) => Promise<void>;
+}) {
+  return (
+    <article className="card" role="listitem">
+      <div className="image-wrap">
+        <img className="photo" src={item.url} alt="Seeker photo" loading="lazy" decoding="async" />
+      </div>
+      <div className="meta">
+        <div><strong>Hash</strong>: <span className="hash">{formatHash(item.hashHex)}</span></div>
+        <div className="row">
+          <strong>On-chain</strong>:
+          {item.onChainVerified ? (
+            <span className="verified-badge">✓ Proof account found</span>
+          ) : (
+            <span className="unverified-badge">No proof account match</span>
+          )}
         </div>
-        <div className="summary-meta">
-          <span><strong>Program</strong>: {formatHash(data?.programId ?? '')}</span>
+        {verified[item.key] === true ? (
+          <div className="row verified"><strong>Image Hash</strong>: <span className="verified-badge">✓ Content matches hash</span></div>
+        ) : verified[item.key] === false ? (
+          <div className="row"><strong>Image Hash</strong>: <span className="unverified-badge">Mismatch</span></div>
+        ) : (
+          <div className="row"><strong>Image Hash</strong>: <span className="pending-badge">Checking…</span></div>
+        )}
+        <div className="row"><strong>H3 Cell</strong>: <span className="location">{formatH3Cell(item.h3Cell)}</span></div>
+        <div className="row"><strong>Timestamp</strong>: <span className="timestamp">{item.timestamp || "—"}</span></div>
+        <div className="row"><strong>Owner</strong>: <span className="owner">{formatOwner(item.owner)}</span></div>
+        {item.signature ? (
+          <div className="row"><strong>Tx Sig</strong>: <span className="signature">{item.signature.slice(0, 16) + "…"}</span></div>
+        ) : null}
+        <div className="row"><strong>Nonce</strong>: <span className="nonce">{item.nonce ?? "—"}</span></div>
+        <div className="row"><strong>Leaf Index</strong>: <span className="leaf-index">{item.leafIndex ?? "—"}</span></div>
+        <div className="row"><strong>Created At</strong>: <span className="created-at">{item.createdAt ?? "—"}</span></div>
+        <div className="row"><strong>S3</strong>: <a className="s3-link" href={item.url} target="_blank" rel="noreferrer noopener">Open</a></div>
+        <div className="row">
+          <strong>Delete</strong>:
+          <button
+            type="button"
+            className="delete-button"
+            onClick={() => void onDelete(item)}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting..." : "Delete image"}
+          </button>
         </div>
-      </section>
-      {groups.map((g) => (
-        <section key={g.seekerMint} className="group">
-          <h2 className="group-title">
-            Seeker: {g.seekerMint}
-            {g.seekerMint && g.seekerMint !== "unknown" ? (
-              <> · <a href={`https://solscan.io/token/${g.seekerMint}`} target="_blank" rel="noreferrer noopener">View on Solscan</a></>
-            ) : null}
-          </h2>
-          <div className="cards" role="list">
-            {g.items.map((item) => (
-              <article className="card" role="listitem" key={item.key}>
-                  <div className="image-wrap">
-                  <img className="photo" src={item.url} alt="Seeker photo" loading="lazy" decoding="async" />
-                </div>
-                <div className="meta">
-                  <div><strong>Hash</strong>: <span className="hash">{formatHash(item.hashHex)}</span></div>
-                  <div className="row">
-                    <strong>On-chain</strong>:
-                    {item.onChainVerified ? (
-                      <span className="verified-badge">✓ Proof account found</span>
-                    ) : (
-                      <span className="unverified-badge">No proof account match</span>
-                    )}
-                  </div>
-                  {verified[item.key] === true ? (
-                    <div className="row verified"><strong>Image Hash</strong>: <span className="verified-badge">✓ Content matches hash</span></div>
-                  ) : verified[item.key] === false ? (
-                    <div className="row"><strong>Image Hash</strong>: <span className="unverified-badge">Mismatch</span></div>
-                  ) : (
-                    <div className="row"><strong>Image Hash</strong>: <span className="pending-badge">Checking…</span></div>
-                  )}
-                  <div className="row"><strong>H3 Cell</strong>: <span className="location">{formatH3Cell(item.h3Cell)}</span></div>
-                  <div className="row"><strong>Timestamp</strong>: <span className="timestamp">{item.timestamp || "—"}</span></div>
-                  <div className="row"><strong>Owner</strong>: <span className="owner">{formatOwner(item.owner)}</span></div>
-                  {item.signature ? (
-                    <div className="row"><strong>Tx Sig</strong>: <span className="signature">{item.signature.slice(0, 16) + "…"}</span></div>
-                  ) : null}
-                  <div className="row"><strong>Nonce</strong>: <span className="nonce">{item.nonce ?? "—"}</span></div>
-                  <div className="row"><strong>Leaf Index</strong>: <span className="leaf-index">{item.leafIndex ?? "—"}</span></div>
-                  <div className="row"><strong>Created At</strong>: <span className="created-at">{item.createdAt ?? "—"}</span></div>
-                  <div className="row"><strong>S3</strong>: <a className="s3-link" href={item.url} target="_blank" rel="noreferrer noopener">Open</a></div>
-                  <div className="row">
-                    <strong>Delete</strong>:
-                    <button
-                      type="button"
-                      className="delete-button"
-                      onClick={() => handleDelete(item)}
-                      disabled={Boolean(deletingKeys[item.key])}
-                    >
-                      {deletingKeys[item.key] ? "Deleting..." : "Delete image"}
-                    </button>
-                  </div>
-                  {item.proofAccountUrl && (
-                    <div className="row account"><strong>On-chain Account</strong>: <a className="proof-link" href={item.proofAccountUrl} target="_blank" rel="noreferrer noopener">{formatHash(item.proofAccount)}</a></div>
-                  )}
-                  {item.proofUrl && (
-                    <div className="row proof"><strong>Proof</strong>: <a className="proof-link" href={item.proofUrl} target="_blank" rel="noreferrer noopener">JSON</a></div>
-                  )}
-                  {item.tx && (
-                    <div className="row tx"><strong>Transaction</strong>: <a className="tx-link" href={item.tx} target="_blank" rel="noreferrer noopener">View</a></div>
-                  )}
-                </div>
-              </article>
-            ))}
+        {item.proofAccountUrl && (
+          <div className="row account"><strong>On-chain Account</strong>: <a className="proof-link" href={item.proofAccountUrl} target="_blank" rel="noreferrer noopener">{formatHash(item.proofAccount)}</a></div>
+        )}
+        {item.proofUrl && (
+          <div className="row proof"><strong>Proof</strong>: <a className="proof-link" href={item.proofUrl} target="_blank" rel="noreferrer noopener">JSON</a></div>
+        )}
+        {item.tx && (
+          <div className="row tx"><strong>Transaction</strong>: <a className="tx-link" href={item.tx} target="_blank" rel="noreferrer noopener">View</a></div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ProofTransactionList({ proofs }: { proofs?: ApiResponse["proofs"] }) {
+  if (!proofs?.length) return null;
+  return (
+    <section className="group">
+      <h2 className="group-title">On-chain Proof Transactions</h2>
+      <div className="proof-list">
+        {proofs.slice(0, 50).map((proof) => (
+          <div className="proof-item" key={proof.signature}>
+            <div><strong>Tx</strong>: <a href={proof.url} target="_blank" rel="noreferrer noopener">{formatHash(proof.signature)}</a></div>
+            <div><strong>Hash</strong>: {formatHash(proof.hashHex)}</div>
+            <div><strong>Owner</strong>: {formatHash(proof.payer)}</div>
+            <div><strong>Timestamp</strong>: {proof.timestamp ?? "—"}</div>
+            <div><strong>H3 Cell</strong>: {formatH3Cell(proof.h3Cell)}</div>
+            <div><strong>Nonce</strong>: {proof.nonce}</div>
           </div>
-        </section>
-      ))}
-      {!!data?.proofs?.length && (
-        <section className="group">
-          <h2 className="group-title">On-chain Proof Transactions</h2>
-          <div className="proof-list">
-            {data.proofs.slice(0, 50).map((proof) => (
-              <div className="proof-item" key={proof.signature}>
-                <div><strong>Tx</strong>: <a href={proof.url} target="_blank" rel="noreferrer noopener">{formatHash(proof.signature)}</a></div>
-                <div><strong>Hash</strong>: {formatHash(proof.hashHex)}</div>
-                <div><strong>Owner</strong>: {formatHash(proof.payer)}</div>
-                <div><strong>Timestamp</strong>: {proof.timestamp ?? "—"}</div>
-                <div><strong>H3 Cell</strong>: {formatH3Cell(proof.h3Cell)}</div>
-                <div><strong>Nonce</strong>: {proof.nonce}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

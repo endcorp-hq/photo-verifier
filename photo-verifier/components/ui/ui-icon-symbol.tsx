@@ -5,7 +5,7 @@ import { ComponentProps } from 'react'
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native'
 
 type UiIconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>
-export type UiIconSymbolName = keyof typeof MAPPING
+type UiIconSymbolName = keyof typeof MAPPING
 
 /**
  * Add your SF Symbols to Material Icons mappings here.

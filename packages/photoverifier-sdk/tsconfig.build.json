@@ -3,7 +3,7 @@
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": false
-  }
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
 }
-
 

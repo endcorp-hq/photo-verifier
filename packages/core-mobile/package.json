@@ -1,0 +1,38 @@
+{
+  "name": "@photoverifier/core-mobile",
+  "version": "0.1.0",
+  "description": "Mobile adapters for photo verification core primitives",
+  "exports": {
+    "./camera": "./dist/camera.js",
+    "./location": "./dist/location.js"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+  },
+  "peerDependencies": {
+    "expo": ">=51",
+    "expo-camera": "*",
+    "expo-file-system": "~18.1.11",
+    "expo-location": "*",
+    "expo-media-library": "*",
+    "react": ">=18",
+    "react-native": ">=0.74"
+  },
+  "dependencies": {
+    "@photoverifier/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.3",
+    "globals": "^17.4.0",
+    "typescript-eslint": "^8.56.1"
+  }
+}

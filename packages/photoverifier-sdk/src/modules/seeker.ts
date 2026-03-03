@@ -1,14 +1,56 @@
-import { Platform } from 'react-native';
 import {
   type AccountInfo,
   type Connection,
   type PublicKey,
   Connection as Web3Connection,
-  PublicKey as Web3PublicKey
+  PublicKey as Web3PublicKey,
 } from '@solana/web3.js';
 
-// Default RPC URL - can be overridden via verifySeeker() param or environment
+// Default RPC URL - can be overridden via verifySeeker() param.
 const DEFAULT_RPC_URL = 'https://api.mainnet-beta.solana.com';
+
+export type SeekerWalletVerificationRequest = {
+  walletAddress: string;
+  rpcUrl?: string;
+};
+
+export type SeekerOwnerVerificationRequest = {
+  connection: Connection;
+  owner: PublicKey;
+  seekerMintsByCluster: string[];
+};
+
+export type SeekerVerificationResult =
+  | {
+      status: 'verified';
+      isVerified: true;
+      isSeeker: true;
+      seekerMint: string;
+      // Backward-compatible alias
+      mint: string;
+      reason?: undefined;
+    }
+  | {
+      status: 'not_verified';
+      isVerified: false;
+      isSeeker: false;
+      seekerMint: null;
+      // Backward-compatible alias
+      mint: null;
+      reason?: string;
+      cause?: string;
+    }
+  | {
+      status: 'verification_unavailable';
+      isVerified: false;
+      isSeeker: false;
+      seekerMint: null;
+      mint: null;
+      reason: string;
+      cause?: string;
+    };
+
+export type SeekerDetectionResult = SeekerVerificationResult;
 
 type ParsedTokenAccountData = {
   parsed?: {
@@ -37,7 +79,11 @@ type TokenAccountsByOwnerV2Response = {
 
 type SplTokenModule = {
   TOKEN_2022_PROGRAM_ID: Web3PublicKey;
-  unpackMint: (mint: Web3PublicKey, mintInfo: AccountInfo<Buffer>, programId: Web3PublicKey) => {
+  unpackMint: (
+    mint: Web3PublicKey,
+    mintInfo: AccountInfo<Buffer>,
+    programId: Web3PublicKey
+  ) => {
     address: Web3PublicKey;
     mintAuthority?: Web3PublicKey | null;
   };
@@ -50,95 +96,180 @@ type SplTokenModule = {
   } | null;
 };
 
-function extractMintAndAmount(parsed: ParsedTokenAccountData | undefined): { mint?: string; amount?: string } {
-  return {
-    mint: parsed?.parsed?.info?.mint,
-    amount: parsed?.parsed?.info?.tokenAmount?.amount,
-  };
-}
+type SeekerLookupConnection = Pick<
+  Connection,
+  'getParsedTokenAccountsByOwner' | 'getMultipleAccountsInfo'
+>;
 
-export async function findSeekerMintForOwner(
-  connection: Connection,
-  owner: PublicKey,
-  seekerMintsByCluster: string[],
-): Promise<string | null> {
-  try {
-    if (!seekerMintsByCluster?.length) return null;
-    const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
-    const [tokenAccounts, token2022Accounts] = await Promise.all([
-      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
-      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
-    ]);
-    const all = [...tokenAccounts.value, ...token2022Accounts.value];
-    for (const acc of all) {
-      const parsed = acc.account.data as ParsedTokenAccountData;
-      const { mint, amount } = extractMintAndAmount(parsed);
-      if (mint && amount !== '0' && seekerMintsByCluster.includes(mint)) return mint;
-    }
-  } catch {
-    // Fail closed and return null for non-Seeker wallets or RPC errors.
-  }
-  return null;
-}
-
-export type SeekerDetectionResult = {
-  isSeeker: boolean;
-  seekerMint: string | null;
+type VerifySeekerRuntime = {
+  createConnection: (rpcUrl: string) => SeekerLookupConnection;
+  createPublicKey: (value: string) => PublicKey;
+  loadSplToken: () => Promise<SplTokenModule>;
+  fetchFn: typeof fetch;
 };
-
-// High-level helper wrapping the Seeker Genesis Token verification (client-side half):
-//  - Verifies wallet holds one of the configured Seeker Genesis Token mint addresses
-//  - Returns the matching mint if found
-export async function detectSeekerUser(
-  connection: Connection,
-  owner: PublicKey,
-  seekerMintsByCluster: string[],
-): Promise<SeekerDetectionResult> {
-  const mint = await findSeekerMintForOwner(connection, owner, seekerMintsByCluster);
-  return { isSeeker: !!mint, seekerMint: mint };
-}
-
-// Lightweight client-side device check using Platform constants. Spoofable; for UX only.
-export function isSeekerDevice(): boolean {
-  try {
-    const platform = Platform as unknown as { constants?: { Model?: string } };
-    return platform.constants?.Model === 'Seeker';
-  } catch {
-    return false;
-  }
-}
 
 // Constants for Seeker Genesis Token verification
 const SGT_MINT_AUTHORITY = 'GT2zuHVaZQYZSyQMgJPLzvkmyztfyXg2NJunqFp4p3A4';
 const SGT_METADATA_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
 const SGT_GROUP_MINT_ADDRESS = 'GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te';
 
+function extractMintAndAmount(parsed: ParsedTokenAccountData | undefined): {
+  mint?: string;
+  amount?: string;
+} {
+  return {
+    mint: parsed?.parsed?.info?.mint,
+    amount: parsed?.parsed?.info?.tokenAmount?.amount,
+  };
+}
+
+function verifiedSeekerResult(seekerMint: string): SeekerVerificationResult {
+  return {
+    status: 'verified',
+    isVerified: true,
+    isSeeker: true,
+    seekerMint,
+    mint: seekerMint,
+  };
+}
+
+function unverifiedSeekerResult(reason?: string): SeekerVerificationResult {
+  return {
+    status: 'not_verified',
+    isVerified: false,
+    isSeeker: false,
+    seekerMint: null,
+    mint: null,
+    reason,
+  };
+}
+
+function unavailableSeekerResult(reason: string, cause?: unknown): SeekerVerificationResult {
+  return {
+    status: 'verification_unavailable',
+    isVerified: false,
+    isSeeker: false,
+    seekerMint: null,
+    mint: null,
+    reason,
+    cause: cause ? normalizeCause(cause) : undefined,
+  };
+}
+
+function normalizeCause(cause: unknown): string {
+  return String((cause as { message?: string })?.message ?? cause ?? 'unknown error');
+}
+
+function normalizeOwnerRequest(
+  requestOrConnection: SeekerOwnerVerificationRequest | Connection,
+  owner?: PublicKey,
+  seekerMintsByCluster?: string[]
+): SeekerOwnerVerificationRequest {
+  if ('connection' in requestOrConnection && 'owner' in requestOrConnection) {
+    return requestOrConnection;
+  }
+
+  if (!owner) {
+    throw new Error('owner is required when using positional seeker verification arguments');
+  }
+
+  return {
+    connection: requestOrConnection,
+    owner,
+    seekerMintsByCluster: seekerMintsByCluster ?? [],
+  };
+}
+
+export function findSeekerMintForOwner(
+  request: SeekerOwnerVerificationRequest
+): Promise<SeekerVerificationResult>;
+export function findSeekerMintForOwner(
+  connection: Connection,
+  owner: PublicKey,
+  seekerMintsByCluster: string[]
+): Promise<SeekerVerificationResult>;
+export async function findSeekerMintForOwner(
+  requestOrConnection: SeekerOwnerVerificationRequest | Connection,
+  owner?: PublicKey,
+  seekerMintsByCluster?: string[]
+): Promise<SeekerVerificationResult> {
+  const request = normalizeOwnerRequest(requestOrConnection, owner, seekerMintsByCluster);
+
+  try {
+    if (!request.seekerMintsByCluster?.length) {
+      return unverifiedSeekerResult('no_seeker_mints_configured');
+    }
+
+    const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
+    const [tokenAccounts, token2022Accounts] = await Promise.all([
+      request.connection.getParsedTokenAccountsByOwner(request.owner, { programId: TOKEN_PROGRAM_ID }),
+      request.connection.getParsedTokenAccountsByOwner(request.owner, { programId: TOKEN_2022_PROGRAM_ID }),
+    ]);
+
+    const all = [...tokenAccounts.value, ...token2022Accounts.value];
+    for (const account of all) {
+      const parsed = account.account.data as ParsedTokenAccountData;
+      const { mint, amount } = extractMintAndAmount(parsed);
+      if (mint && amount !== '0' && request.seekerMintsByCluster.includes(mint)) {
+        return verifiedSeekerResult(mint);
+      }
+    }
+  } catch (error) {
+    // Fail closed for non-Seeker wallets or RPC errors.
+    return unavailableSeekerResult('lookup_failed', error);
+  }
+
+  return unverifiedSeekerResult('no_matching_token');
+}
+
+export function detectSeekerUser(
+  request: SeekerOwnerVerificationRequest
+): Promise<SeekerDetectionResult>;
+export function detectSeekerUser(
+  connection: Connection,
+  owner: PublicKey,
+  seekerMintsByCluster: string[]
+): Promise<SeekerDetectionResult>;
+export function detectSeekerUser(
+  requestOrConnection: SeekerOwnerVerificationRequest | Connection,
+  owner?: PublicKey,
+  seekerMintsByCluster?: string[]
+): Promise<SeekerDetectionResult> {
+  const request = normalizeOwnerRequest(requestOrConnection, owner, seekerMintsByCluster);
+  return findSeekerMintForOwner(request);
+}
+
 /**
- * Verify if a wallet holds a Seeker Genesis Token (SGT)
- * 
- * This verifies the wallet owns a genuine Seeker phone by checking for the 
- * official Seeker Genesis Token with correct mint authority, metadata, and group.
- * 
- * @param params.walletAddress - The wallet address to verify
- * @param params.rpcUrl - RPC URL (defaults to SOLANA_RPC_URL env or mainnet-beta)
- * @returns { isVerified: boolean, mint: string | null }
+ * Verify if a wallet holds a Seeker Genesis Token (SGT).
+ * Returns the unified SeekerVerificationResult contract.
  */
-export async function verifySeeker(params: {
-  walletAddress: string;
-  rpcUrl?: string;
-}): Promise<{ isVerified: boolean; mint: string | null }> {
+export async function verifySeeker(
+  params: SeekerWalletVerificationRequest,
+  runtime: VerifySeekerRuntime = {
+    createConnection: (rpcUrl: string) => new Web3Connection(rpcUrl),
+    createPublicKey: (value: string) => new Web3PublicKey(value),
+    loadSplToken: async () => (await import('@solana/spl-token')) as unknown as SplTokenModule,
+    fetchFn: fetch,
+  }
+): Promise<SeekerVerificationResult> {
+  return verifySeekerInternal(params, runtime);
+}
+
+async function verifySeekerInternal(
+  params: SeekerWalletVerificationRequest,
+  runtime: VerifySeekerRuntime
+): Promise<SeekerVerificationResult> {
   const rpcUrl = params.rpcUrl ?? DEFAULT_RPC_URL;
 
   try {
-    const connection = new Web3Connection(rpcUrl);
-    const spl = await import('@solana/spl-token');
+    const connection = runtime.createConnection(rpcUrl);
     const { unpackMint, getMetadataPointerState, getTokenGroupMemberState, TOKEN_2022_PROGRAM_ID } =
-      spl as unknown as SplTokenModule;
+      await runtime.loadSplToken();
 
     const mintStrings: string[] = [];
     const seenMints = new Set<string>();
-    const collectMint = (acc: ParsedTokenAccount) => {
-      const { mint, amount } = extractMintAndAmount(acc?.account?.data);
+    const collectMint = (account: ParsedTokenAccount) => {
+      const { mint, amount } = extractMintAndAmount(account?.account?.data);
       if (!mint || amount === '0') return;
       if (seenMints.has(mint)) return;
       seenMints.add(mint);
@@ -146,11 +277,12 @@ export async function verifySeeker(params: {
     };
 
     // Preferred path for providers that support it (e.g. Helius).
+    let preferredLookupCause: string | null = null;
     try {
       let paginationKey: string | null = null;
       let pageCount = 0;
       do {
-        pageCount++;
+        pageCount += 1;
         const requestPayload = {
           jsonrpc: '2.0',
           id: `page-${pageCount}`,
@@ -162,35 +294,51 @@ export async function verifySeeker(params: {
           ],
         } as const;
 
-        const resp = await fetch(rpcUrl, {
+        const response = await runtime.fetchFn(rpcUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestPayload),
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = (await resp.json()) as TokenAccountsByOwnerV2Response;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = (await response.json()) as TokenAccountsByOwnerV2Response;
         if (data.error) throw new Error(`RPC: ${data.error?.message ?? 'unknown error'}`);
-        const value = data?.result?.value?.accounts ?? [];
-        for (const account of value) collectMint(account);
+
+        const accounts = data?.result?.value?.accounts ?? [];
+        for (const account of accounts) collectMint(account);
         paginationKey = data?.result?.paginationKey ?? null;
       } while (paginationKey);
-    } catch {
+    } catch (error) {
+      preferredLookupCause = normalizeCause(error);
       // Fall through to standard Solana RPC method.
     }
 
     // Fallback path for standard RPC nodes.
     if (!mintStrings.length) {
-      const owner = new Web3PublicKey(params.walletAddress);
-      const parsed = await connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID });
-      for (const account of parsed.value) collectMint(account);
+      try {
+        const owner = runtime.createPublicKey(params.walletAddress);
+        const parsed = await connection.getParsedTokenAccountsByOwner(owner, {
+          programId: TOKEN_2022_PROGRAM_ID,
+        });
+        for (const account of parsed.value) collectMint(account);
+      } catch (error) {
+        return unavailableSeekerResult(
+          'token_lookup_failed',
+          preferredLookupCause
+            ? `${preferredLookupCause}; fallback=${normalizeCause(error)}`
+            : error
+        );
+      }
     }
 
-    if (!mintStrings.length) return { isVerified: false, mint: null };
+    if (!mintStrings.length) {
+      return unverifiedSeekerResult('no_token_2022_balances');
+    }
 
-    const mintPubkeys = mintStrings.map((mint) => new Web3PublicKey(mint));
+    const mintPubkeys = mintStrings.map((mint) => runtime.createPublicKey(mint));
 
     const BATCH_SIZE = 100;
-    const mintAccountInfos: (AccountInfo<Buffer> | null)[] = [];
+    const mintAccountInfos: Array<AccountInfo<Buffer> | null> = [];
     for (let i = 0; i < mintPubkeys.length; i += BATCH_SIZE) {
       const batch = mintPubkeys.slice(i, i + BATCH_SIZE);
       const infos = await connection.getMultipleAccountsInfo(batch);
@@ -200,29 +348,35 @@ export async function verifySeeker(params: {
     for (let i = 0; i < mintAccountInfos.length; i++) {
       const mintInfo = mintAccountInfos[i];
       if (!mintInfo) continue;
+
       const mintPubkey = mintPubkeys[i];
       try {
         const mint = unpackMint(mintPubkey, mintInfo, TOKEN_2022_PROGRAM_ID);
+
         const mintAuthority = mint.mintAuthority?.toBase58();
         const hasCorrectMintAuthority = mintAuthority === SGT_MINT_AUTHORITY;
+
         const metadataPointer = getMetadataPointerState(mint);
         const hasCorrectMetadata =
-          metadataPointer &&
+          !!metadataPointer &&
           metadataPointer.authority?.toBase58() === SGT_MINT_AUTHORITY &&
           metadataPointer.metadataAddress?.toBase58() === SGT_METADATA_ADDRESS;
+
         const tokenGroupMemberState = getTokenGroupMemberState(mint);
         const hasCorrectGroupMember =
-          tokenGroupMemberState && tokenGroupMemberState.group?.toBase58() === SGT_GROUP_MINT_ADDRESS;
+          !!tokenGroupMemberState &&
+          tokenGroupMemberState.group?.toBase58() === SGT_GROUP_MINT_ADDRESS;
+
         if (hasCorrectMintAuthority && hasCorrectMetadata && hasCorrectGroupMember) {
-          return { isVerified: true, mint: mint.address.toBase58() };
+          return verifiedSeekerResult(mint.address.toBase58());
         }
       } catch {
-        continue;
+        // Continue scanning other mint accounts.
       }
     }
 
-    return { isVerified: false, mint: null };
-  } catch {
-    return { isVerified: false, mint: null };
+    return unverifiedSeekerResult('no_matching_sgt');
+  } catch (error) {
+    return unavailableSeekerResult('verification_failed', error);
   }
 }
