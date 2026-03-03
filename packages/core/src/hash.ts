@@ -26,4 +26,4 @@ export function blake3Hash(bytes: Uint8Array): { hash32: Uint8Array; hashHex: st
   return { hash32: digest, hashHex: bytesToHex(digest) };
 }
 
-export type { Blake3HashResult } from './types';
+export type { Blake3HashResult } from './types.js';

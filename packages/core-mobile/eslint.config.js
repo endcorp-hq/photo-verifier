@@ -9,7 +9,7 @@ module.exports = tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
         project: true,
@@ -18,24 +18,13 @@ module.exports = tseslint.config(
       globals: {
         ...globals.es2021,
         ...globals.node,
+        fetch: 'readonly',
         Buffer: 'readonly',
-        TextEncoder: 'readonly',
       },
     },
     rules: {
       'no-console': 'off',
       'no-unused-vars': 'off',
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            '@endcorp/photoverifier-sdk',
-            '@endcorp/photoverifier-sdk/*',
-            '../photoverifier-sdk/*',
-            '../../photoverifier-sdk/*',
-          ],
-        },
-      ],
       '@typescript-eslint/consistent-type-imports': [
         'error',
         { prefer: 'type-imports', disallowTypeAnnotations: false },
