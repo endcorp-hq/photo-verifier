@@ -16,6 +16,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-module.exports = config;
+// Some Solana dependencies reference subpaths that aren't exported for the
+// `android` condition. Disable package exports so Metro uses classic
+// file-based resolution and avoids noisy fallback warnings.
+config.resolver.unstable_enablePackageExports = false;
 
+module.exports = config;
 
