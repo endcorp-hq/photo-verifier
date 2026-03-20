@@ -1,4 +1,4 @@
-import { useConnection } from '@/components/solana/solana-provider'
+import { useConnection } from '@/features/solana/providers/solana-provider'
 import { useQuery } from '@tanstack/react-query'
 import { AppText } from '@/components/app-text'
 import React from 'react'

@@ -1,11 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { router } from 'expo-router'
 import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuth } from '@/components/auth/auth-provider'
-import { useWalletUi } from '@/components/solana/use-wallet-ui'
 
 export default function SignIn() {
   const {
@@ -13,9 +12,10 @@ export default function SignIn() {
     isSeekerVerified,
     isVerifyingSeeker,
     signIn,
+    signOut,
     refreshSeekerVerification,
   } = useAuth()
-  const { disconnect } = useWalletUi()
+  const [signInError, setSignInError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isAuthenticated && isSeekerVerified) {
@@ -36,7 +36,17 @@ export default function SignIn() {
 
         <View style={styles.actions}>
           {!isAuthenticated ? (
-            <Pressable style={styles.primaryButton} onPress={() => signIn()}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={async () => {
+                try {
+                  setSignInError(null)
+                  await signIn()
+                } catch (error: any) {
+                  setSignInError(error?.message ?? 'Failed to connect wallet. Please try again.')
+                }
+              }}
+            >
               <Text style={styles.primaryButtonText}>Connect Wallet</Text>
             </Pressable>
           ) : isSeekerVerified ? (
@@ -48,11 +58,12 @@ export default function SignIn() {
               <Pressable style={styles.primaryButton} onPress={() => refreshSeekerVerification()}>
                 <Text style={styles.primaryButtonText}>Retry Verification</Text>
               </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={() => disconnect()}>
+              <Pressable style={styles.secondaryButton} onPress={() => signOut()}>
                 <Text style={styles.secondaryButtonText}>Disconnect Wallet</Text>
               </Pressable>
             </>
           )}
+          {signInError ? <Text style={styles.errorText}>{signInError}</Text> : null}
         </View>
       </SafeAreaView>
     </View>
@@ -120,5 +131,11 @@ const styles = StyleSheet.create({
     color: '#eff5ff',
     fontWeight: '700',
     fontSize: 14,
+  },
+  errorText: {
+    color: '#ffd0d0',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
 })

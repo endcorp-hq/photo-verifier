@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./.test-dist",
+    "rootDir": "./"
+  },
+  "include": ["app/api/_shared/**/*.ts"],
+  "exclude": ["node_modules", ".next", ".test-dist"]
+}

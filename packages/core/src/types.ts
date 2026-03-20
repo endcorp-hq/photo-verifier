@@ -26,8 +26,41 @@ export interface CaptureResult {
   assetUri: string;
 }
 
+export interface S3UploadRequest {
+  key: string;
+  contentType: string;
+  bytes: Uint8Array;
+}
+
+export interface S3UploadResult {
+  url: string;
+  key: string;
+}
+
+export interface PresignedPutRequest {
+  url: string;
+  bytes: Uint8Array;
+  contentType: string;
+}
+
+export interface S3UriParts {
+  bucket: string;
+  key: string;
+}
+
+export interface S3PhotoKeyParseParams {
+  basePrefix?: string;
+}
+
 export interface S3Config {
-  upload: (params: { key: string; contentType: string; bytes: Uint8Array }) => Promise<{ url: string; key: string }>;
+  upload: (params: S3UploadRequest) => Promise<S3UploadResult>;
+}
+
+export interface S3StorageRuntimeConfig {
+  bucket: string;
+  region: string;
+  prefix: string;
+  cdnDomain: string | null;
 }
 
 export interface S3KeyParams {

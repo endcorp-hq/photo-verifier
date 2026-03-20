@@ -7,10 +7,10 @@ import React, { useState } from 'react'
 import { Button } from '@react-navigation/elements'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { useMutation } from '@tanstack/react-query'
-import { useWalletUi } from '@/components/solana/use-wallet-ui'
+import { useWalletUi } from '@/features/wallet-auth/use-wallet-ui'
 import { ellipsify } from '@/utils/ellipsify'
 
-function useSignMessage({ address }: { address: PublicKey }) {
+function useSignMessage({ _address }: { _address: PublicKey }) {
   const { signMessage } = useWalletUi()
   return useMutation({
     mutationFn: async (input: { message: string }) => {
@@ -20,7 +20,7 @@ function useSignMessage({ address }: { address: PublicKey }) {
 }
 
 export function DemoFeatureSignMessage({ address }: { address: PublicKey }) {
-  const signMessage = useSignMessage({ address })
+  const signMessage = useSignMessage({ _address: address })
   const [message, setMessage] = useState('Hello world')
   const backgroundColor = useThemeColor({ light: '#f0f0f0', dark: '#333333' }, 'background')
   const textColor = useThemeColor({ light: '#000000', dark: '#ffffff' }, 'text')

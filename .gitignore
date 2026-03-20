@@ -8,6 +8,7 @@ node_modules
 
 # Expo
 .expo/
+photo-verifier/.expo-export-android*/
 dist/
 web-build/
 expo-env.d.ts
@@ -24,6 +25,7 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 .next
+demo-site/.test-dist/
 # debug
 npm-debug.*
 yarn-debug.*
@@ -50,3 +52,7 @@ Cargo.lock
 .anchor/
 *.so
 *.wasm
+
+.desloppify
+.desloppify-shim
+.claude

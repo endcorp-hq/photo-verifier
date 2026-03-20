@@ -46,7 +46,7 @@
     "react-native": ">=0.74"
   },
   "dependencies": {
-    "@endcorp/photoverifier-sdk": "^0.2.2",
+    "@endcorp/photoverifier-sdk": "workspace:*",
     "js-base64": "^3.7.8"
   },
   "devDependencies": {

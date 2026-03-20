@@ -58,7 +58,7 @@ export class PresignError extends Error {
   }
 }
 
-export async function requestAttestedPresignedPut(
+export function requestAttestedPresignedPut(
   endpoint: string,
   params: {
     key: string;
@@ -66,29 +66,29 @@ export async function requestAttestedPresignedPut(
     integrity: PresignIntegrityEnvelope;
   }
 ): Promise<AttestedPresignResponse> {
-  const res = await fetch(endpoint, {
+  return fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new PresignError(
+        'PRESIGN_HTTP_ERROR',
+        `Failed to request presigned URL (${res.status}): ${text || 'no response body'}`,
+        res.status
+      );
+    }
+
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      throw new PresignError('PRESIGN_INVALID_JSON', 'Presign API returned invalid JSON');
+    }
+
+    return parseAttestedPresignResponse(json);
   });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new PresignError(
-      'PRESIGN_HTTP_ERROR',
-      `Failed to request presigned URL (${res.status}): ${text || 'no response body'}`,
-      res.status
-    );
-  }
-
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    throw new PresignError('PRESIGN_INVALID_JSON', 'Presign API returned invalid JSON');
-  }
-
-  return parseAttestedPresignResponse(json);
 }
 
 export function parseAttestedPresignResponse(json: unknown): AttestedPresignResponse {

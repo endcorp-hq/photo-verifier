@@ -15,7 +15,8 @@ Monorepo for a Seeker-gated photo verification system that:
 - `demo-site/`: Next.js gallery and proof verification view
 - `packages/photoverifier-sdk/`: main SDK (`@endcorp/photoverifier-sdk`)
 - `packages/photoverifier-seeker-sdk/`: Seeker-focused wrapper SDK (`@endcorp/photoverifier-seeker-sdk`)
-- `packages/core/`: free core primitives (hash/camera/location/storage)
+- `packages/core/`: free portable primitives (hash/storage/contracts/types/theme)
+- `packages/core-mobile/`: mobile adapters (camera/location via Expo)
 - `packages/blockchain/`: licensed blockchain helpers
 - `on-chain/photo-proof-compressed/`: Anchor program
 - `infra/`: presign API + deploy scripts
@@ -29,6 +30,12 @@ Monorepo for a Seeker-gated photo verification system that:
 - Presign endpoint (current deploy): `https://yqc2akkjn0.execute-api.us-west-2.amazonaws.com/uploads`
 
 Treat values above as environment-specific. Do not commit private keys or API secrets.
+
+Canonical contract constants live in [docs/CONTRACT_CONSTANTS.md](./docs/CONTRACT_CONSTANTS.md) and are validated via:
+
+```bash
+pnpm run check:contracts
+```
 
 ## Quick Start
 
@@ -54,6 +61,18 @@ Build SDK packages:
 pnpm -C packages/photoverifier-sdk build
 pnpm -C packages/photoverifier-seeker-sdk build
 ```
+
+Run cross-package contract parity checks (recommended before merges):
+
+```bash
+pnpm run test:core-sdk-parity
+pnpm run test:blockchain-parity
+pnpm run test:demo-api-runtime
+pnpm run check:contracts
+pnpm run check:no-dist-imports
+```
+
+`test:blockchain-parity` includes behavioral contract tests for H3 conversion and PDA/tree-profile stability.
 
 ## Documentation Index
 

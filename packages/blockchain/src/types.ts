@@ -3,7 +3,7 @@
  */
 
 import type { PublicKey } from '@solana/web3.js';
-import type { PhotoProof } from './compressed';
+import type { PhotoProof } from './compressed.js';
 
 export type { PhotoProof };
 

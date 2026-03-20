@@ -83,7 +83,3 @@ export async function deleteUploadHistoryRecord(id: string): Promise<void> {
   const next = existing.filter(item => item.id !== id)
   await AsyncStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(next))
 }
-
-export async function clearUploadHistory(): Promise<void> {
-  await AsyncStorage.removeItem(UPLOAD_HISTORY_KEY)
-}

@@ -7,19 +7,9 @@
  * 
  * Usage:
  * 
- * import { PhotoVerifier } from '@endcorp/photoverifier-sdk';
+ * import { blake3HexFromBytes } from '@endcorp/photoverifier-sdk/core';
  * 
- * // Initialize with license (for blockchain features)
- * const verifier = new PhotoVerifier({
- *   licenseKey: 'your-license-key',
- *   rpcUrl: 'https://api.devnet.solana.com',
- * });
- * 
- * // Capture photo
- * const { hash, metadata } = await verifier.captureAndHash(cameraRef);
- * 
- * // Store on chain (requires license)
- * const { signature } = await verifier.storeProof(hash, metadata);
+ * const hashHex = blake3HexFromBytes(photoBytes);
  */
 
 // Core - always available (free)
@@ -28,19 +18,10 @@ export {
   blake3HexFromBase64,
   blake3HexFromBytes,
   blake3Hash,
-  // Camera
-  captureAndPersist,
-  readFileAsBase64,
-  readFileAsBytes,
-  // Location
-  getCurrentLocation,
-  hasLocationServicesEnabled,
-  requestLocationPermission,
-  locationToString,
-  parseLocationString,
   // Storage
   uploadBytes,
   buildS3KeyForPhoto,
+  parseS3PhotoKey,
   buildS3Uri,
   parseS3Uri,
   putToPresignedUrl,
@@ -51,7 +32,29 @@ export {
   type CaptureResult,
   type S3Config,
   type S3KeyParams,
-} from './core';
+  type S3UploadRequest,
+  type S3UploadResult,
+  type PresignedPutRequest,
+  type S3UriParts,
+  type S3PhotoKeyParseParams,
+  type S3StorageRuntimeConfig,
+} from '@photoverifier/core';
+
+export {
+  // Camera
+  captureAndPersist,
+  readFileAsBase64,
+  readFileAsBytes,
+} from '@photoverifier/core-mobile/camera';
+
+export {
+  // Location
+  getCurrentLocation,
+  hasLocationServicesEnabled,
+  requestLocationPermission,
+  locationToString,
+  parseLocationString,
+} from '@photoverifier/core-mobile/location';
 
 // Blockchain - requires license
 export {
@@ -82,20 +85,19 @@ export {
   UsageTracker,
   type LicenseInfo,
   type LicenseValidationResult,
-} from './blockchain';
-
-// Unified SDK class
-export { PhotoVerifier } from './sdk';
-export type { PhotoVerifierConfig, PhotoVerifierOptions } from './sdk';
+} from '@photoverifier/blockchain';
 
 // Seeker/SGT verification - from modules/seeker
 export {
-  isSeekerDevice,
   verifySeeker,
   detectSeekerUser,
   findSeekerMintForOwner,
+  type SeekerWalletVerificationRequest,
+  type SeekerOwnerVerificationRequest,
+  type SeekerVerificationResult,
   type SeekerDetectionResult,
 } from './modules/seeker';
+export { isSeekerDevice } from './modules/seeker-device';
 
 // H3 helpers
 export {
@@ -110,8 +112,8 @@ export {
   buildRecordPhotoProofTransaction,
   buildRecordPhotoProofInstruction,
   buildInitializeTreeInstruction,
-  deriveTreeConfigPda as deriveOnchainTreeConfigPda,
-  deriveTreeAuthorityPda,
+  deriveGlobalTreeConfigPda,
+  deriveGlobalTreeAuthorityPda,
   PHOTO_PROOF_COMPRESSED_PROGRAM_ID,
   SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
   SPL_NOOP_PROGRAM_ID,
@@ -121,6 +123,7 @@ export {
   sendTransactionWithKeypair,
   confirmTransaction,
   uploadAndSubmit,
+  submitPhotoProofWithPresignedUpload,
   hashBytes,
 } from './modules/onchain';
 
@@ -136,3 +139,6 @@ export {
   type PresignIntegrityEnvelope,
   type AttestedPresignResponse,
 } from './modules/presign';
+
+// Experimental compatibility exports
+export * as experimental from './experimental';

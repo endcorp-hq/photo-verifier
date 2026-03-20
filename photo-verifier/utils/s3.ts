@@ -1,14 +1,11 @@
 import {
   requestAttestedPresignedPut,
   PresignError,
-  type PresignErrorCode,
-  type PresignIntegrityPayload,
   type PresignIntegrityEnvelope,
   type AttestedPresignResponse,
 } from '@endcorp/photoverifier-sdk';
 
-export type PresignResponse = AttestedPresignResponse;
-export type { PresignErrorCode, PresignIntegrityPayload, PresignIntegrityEnvelope };
+type PresignResponse = AttestedPresignResponse;
 export { PresignError };
 
 export async function requestPresignedPut(

@@ -5,7 +5,7 @@
  * LICENSE: Required for blockchain features
  */
 
-import type { LicenseInfo, LicenseValidationResult } from './types';
+import type { LicenseInfo, LicenseValidationResult } from './types.js';
 
 /**
  * License tier configurations
@@ -118,12 +118,26 @@ export function hasFeature(license: LicenseInfo, feature: string): boolean {
 /**
  * Create a demo license key (for testing only)
  */
-export function createDemoLicenseKey(tier: keyof typeof LICENSE_TIERS = 'startup'): string {
+function requireDemoLicenseSecret(secret?: string): string {
+  const resolvedSecret = secret?.trim();
+  if (resolvedSecret) {
+    return resolvedSecret;
+  }
+
+  throw new Error(
+    'PHOTO_VERIFIER_DEMO_LICENSE_SECRET is required to create demo license keys.'
+  );
+}
+
+export function createDemoLicenseKey(
+  tier: keyof typeof LICENSE_TIERS = 'startup',
+  secret = process.env.PHOTO_VERIFIER_DEMO_LICENSE_SECRET
+): string {
   return encodeLicenseKey({
     tier,
     maxPhotos: LICENSE_TIERS[tier].maxPhotos,
     expiresAt: tier === 'free' ? null : Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
-    secret: 'demo-secret-change-in-production',
+    secret: requireDemoLicenseSecret(secret),
   });
 }
 

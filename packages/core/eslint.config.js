@@ -25,6 +25,17 @@ module.exports = tseslint.config(
     rules: {
       'no-console': 'off',
       'no-unused-vars': 'off',
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            '@endcorp/photoverifier-sdk',
+            '@endcorp/photoverifier-sdk/*',
+            '../photoverifier-sdk/*',
+            '../../photoverifier-sdk/*',
+          ],
+        },
+      ],
       '@typescript-eslint/consistent-type-imports': [
         'error',
         { prefer: 'type-imports', disallowTypeAnnotations: false },

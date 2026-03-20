@@ -1,40 +1,26 @@
 import { NextResponse } from 'next/server';
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { errorResponse } from '../_shared/api-error';
+import { deletePhotoWithValidation } from '../_shared/services/photo-deletion-service';
+import { withApiPolicy } from '../_shared/with-api-policy';
 
-const BUCKET = process.env.S3_BUCKET || 'photoverifier';
-const REGION = process.env.S3_REGION || 'us-east-1';
-
-const s3 = new S3Client({ region: REGION });
-
-export async function DELETE(request: Request) {
+export const DELETE = withApiPolicy({ scopes: ['photos:delete'] }, async (request: Request) => {
   try {
     const body = await request.json().catch(() => null);
-    const key = String(body?.key || '').trim();
-    const deleteSidecar = body?.deleteSidecar !== false;
-
-    if (!key) {
-      return NextResponse.json({ error: 'Missing key' }, { status: 400 });
+    const result = await deletePhotoWithValidation(body);
+    if (!result.ok) {
+      return errorResponse({
+        status: result.error.status,
+        code: result.error.code,
+        message: result.error.message,
+      });
     }
-
-    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
-
-    let sidecarDeleted = false;
-    if (deleteSidecar) {
-      const sidecarKey = key.replace(/\.[^.]+$/g, '.json');
-      if (sidecarKey !== key) {
-        await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: sidecarKey }));
-        sidecarDeleted = true;
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      bucket: BUCKET,
-      key,
-      sidecarDeleted,
+    return NextResponse.json(result.value);
+  } catch (error: unknown) {
+    return errorResponse({
+      status: 500,
+      code: 'PHOTO_DELETE_FAILED',
+      message: 'Delete failed',
+      cause: error,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Delete failed' }, { status: 500 });
   }
-}
-
+});
